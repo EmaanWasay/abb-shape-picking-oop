@@ -1,0 +1,1293 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<meta charset="utf-8">
+<title>Shape Picking Cell</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;600;700&display=swap">
+<style>
+  /* Layout: full-bleed 3D robot cell; instrument panels pinned to the corners, caption and transport bar at the bottom */
+  :root {
+    --scene:#cfd5da; --panel:rgba(250,251,252,0.95); --ink:#17212b; --muted:#5a6773; --line:#c3ccd4;
+    --accent:#0b6e7f; --accent-ink:#ffffff; --to-robot:#2459c9; --to-pi:#b85f00; --ok:#15803d; --bad:#b91c1c;
+    --term-bg:#0f1720; --term-fg:#d5e1ea; --term-dim:#7f93a3; --btn:#ffffff; --btn-hover:#eaf0f3;
+    --f-display:"Barlow Semi Condensed", "Arial Narrow", system-ui, sans-serif;
+    --f-body:"IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+    --f-mono:"IBM Plex Mono", ui-monospace, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --scene:#1c2228; --panel:rgba(23,29,36,0.95); --ink:#e5ecf2; --muted:#9db0c0; --line:#384451;
+    --accent:#3fb0c3; --accent-ink:#071419; --to-robot:#7fa6ff; --to-pi:#f2a43c; --ok:#4ade80; --bad:#f87171;
+    --term-bg:#0a0f14; --term-fg:#d5e1ea; --term-dim:#7f93a3; --btn:#212a34; --btn-hover:#2b3643; color-scheme:dark; } }
+  :root[data-theme="dark"] {
+    --scene:#1c2228; --panel:rgba(23,29,36,0.95); --ink:#e5ecf2; --muted:#9db0c0; --line:#384451;
+    --accent:#3fb0c3; --accent-ink:#071419; --to-robot:#7fa6ff; --to-pi:#f2a43c; --ok:#4ade80; --bad:#f87171;
+    --term-bg:#0a0f14; --term-fg:#d5e1ea; --term-dim:#7f93a3; --btn:#212a34; --btn-hover:#2b3643; color-scheme:dark; }
+
+  [hidden] { display:none !important; }
+  html, body { height:100%; overflow:hidden; background:var(--scene); color:var(--ink); font-family:var(--f-body); }
+  #c { position:fixed; inset:0; width:100%; height:100%; display:block; touch-action:none; }
+  .panel { position:absolute; background:var(--panel); color:var(--ink); border:1px solid var(--line); border-radius:10px;
+           box-shadow:0 6px 20px rgba(0,0,0,.14); box-sizing:border-box; }
+  h1, h2 { text-wrap:balance; }
+  #tabs { top:calc(12px + env(safe-area-inset-top, 0px)); left:50%; transform:translateX(-50%); padding:5px; display:flex; gap:4px;
+          flex-wrap:wrap; justify-content:center; max-width:calc(100vw - 32px); }
+  #title { left:calc(16px + env(safe-area-inset-left, 0px)); width:340px; padding:12px 16px; }
+  #title h1 { font-family:var(--f-display); font-weight:700; font-size:24px; letter-spacing:.2px; margin:0 0 2px; line-height:1.05; }
+  #title .kicker { font-size:11px; letter-spacing:1.2px; text-transform:uppercase; color:var(--accent); font-weight:700; margin:0 0 6px; }
+  #title .desc { font-size:13px; color:var(--muted); margin:6px 0 0; line-height:1.45; }
+  #hud { margin-top:10px; padding-top:8px; border-top:1px solid var(--line); display:grid; grid-template-columns:1fr auto; gap:3px 12px; font-size:13px; }
+  #hud b { font-variant-numeric:tabular-nums; text-align:right; font-weight:600; }
+  #title .foot { font-size:11px; color:var(--muted); margin:9px 0 0; line-height:1.45; }
+  .key { display:inline-block; width:9px; height:9px; border-radius:2px; vertical-align:-1px; margin-right:3px; }
+  #term { left:calc(16px + env(safe-area-inset-left, 0px)); width:340px; padding:0; overflow:hidden; background:var(--term-bg); border-color:#26313c; display:flex; flex-direction:column; }
+  #term h2 { margin:0; padding:7px 12px; font:600 11px/1.2 var(--f-body); letter-spacing:1.1px; text-transform:uppercase; color:var(--term-dim); border-bottom:1px solid #26313c; }
+  #termText { margin:0; padding:8px 12px 10px; font:12px/1.5 var(--f-mono); color:var(--term-fg); white-space:pre-wrap; overflow-y:auto; flex:1; min-height:0; }
+  #termText .dim { color:var(--term-dim); }
+  #termText .out { color:#8fb4ff; }
+  #termText .in { color:#ffbf66; }
+  #termText .ok { color:#7ee2a1; }
+  #termText .bad { color:#ff8f8f; }
+  #steps { right:calc(16px + env(safe-area-inset-right, 0px)); width:320px; padding:12px 14px; }
+  #steps h2, #pipe h2 { font:700 11px/1.2 var(--f-body); letter-spacing:1.2px; text-transform:uppercase; color:var(--accent); margin:0 0 8px; }
+  #steps ol { margin:0; padding-left:22px; font-size:13px; line-height:1.4; }
+  #steps li { margin-bottom:5px; color:var(--muted); opacity:.75; }
+  #steps li.active { color:var(--ink); font-weight:600; opacity:1; }
+  #steps li.done { opacity:.9; }
+  #steps li.done::marker { color:var(--ok); }
+  #pipe { right:calc(16px + env(safe-area-inset-right, 0px)); width:320px; padding:12px 14px; }
+  #pipeCanvas { width:100%; height:auto; aspect-ratio:600/438; display:block; border-radius:6px; max-width:100%; }
+  #pipe p { font-size:12px; color:var(--muted); margin:8px 0 0; line-height:1.45; }
+  #caption { left:50%; transform:translateX(-50%); padding:11px 18px; font-size:16px; font-weight:600; line-height:1.45;
+             width:min(860px, calc(100vw - 32px)); text-align:center; }
+  #caption code, .desc code { font-family:var(--f-mono); font-size:.92em; background:rgba(127,140,155,.16); padding:0 4px; border-radius:4px; }
+  #controls { left:50%; transform:translateX(-50%); bottom:calc(14px + env(safe-area-inset-bottom, 0px)); padding:7px 9px; display:flex; gap:6px;
+              flex-wrap:wrap; align-items:center; justify-content:center; width:max-content; max-width:calc(100vw - 32px); }
+  button { font:inherit; font-size:13px; border:1px solid var(--line); background:var(--btn); color:var(--ink); padding:6px 11px; border-radius:7px; cursor:pointer; }
+  button:hover { background:var(--btn-hover); }
+  button:focus-visible, input:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  button.primary { background:var(--accent); color:var(--accent-ink); border-color:var(--accent); font-weight:600; }
+  button.on { border-color:var(--accent); box-shadow:inset 0 0 0 1px var(--accent); }
+  #tabs button.on { background:var(--accent); color:var(--accent-ink); font-weight:600; }
+  .sep { width:1px; height:22px; background:var(--line); margin:0 2px; }
+  label { font-size:13px; display:flex; align-items:center; gap:4px; }
+  @media (max-width:1320px) { #steps { display:none; } }
+  @media (max-width:1060px) { #term { display:none; } }
+  @media (max-width:760px) {
+    #tabs { left:16px; right:16px; transform:none; max-width:none; }
+    #title { left:16px; right:16px; width:auto; padding:8px 12px; }
+    #title .desc, #title .foot, #title .kicker { display:none; }
+    #title h1 { font-size:19px; }
+    #hud { font-size:12px; gap:1px 10px; }
+    #pipe { left:16px; right:16px; width:auto; }
+    #caption { font-size:13.5px; padding:8px 12px; }
+    button { padding:6px 8px; font-size:12px; }
+    .hide-sm { display:none; }
+  }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+} }
+</script>
+
+<canvas id="c" aria-label="3D view of the robot cell"></canvas>
+
+<nav id="tabs" class="panel" aria-label="Scenarios"></nav>
+
+<section id="title" class="panel">
+  <p class="kicker">INA700 · Group 1 · circle, square, triangle</p>
+  <h1>ABB vision pick-and-place</h1>
+  <p class="desc" id="vdesc"></p>
+  <div id="hud"></div>
+  <p class="foot">Messages on the cable: <span class="key" style="background:var(--to-robot)"></span>Pi → robot <span class="key" style="background:var(--to-pi)"></span>robot → Pi.
+  Positions, slots, pApproach, marker (101 mm at 147.52 / 213.15 in <i>white</i>), ports and messages are the project's own values.
+  Inference times are example values; motion is simplified and shortened. Drag to orbit, scroll to zoom.</p>
+</section>
+
+<section id="term" class="panel"><h2>Raspberry Pi · terminal</h2><pre id="termText"></pre></section>
+
+<section id="steps" class="panel"><h2>Workflow</h2><ol id="stepList"></ol></section>
+
+<section id="pipe" class="panel" hidden>
+  <h2 id="pipeTitle">Vision pipeline</h2>
+  <canvas id="pipeCanvas" width="600" height="438"></canvas>
+  <p id="pipeNote"></p>
+</section>
+
+<div id="caption" class="panel">Press <b>Play</b> to start.</div>
+
+<div id="controls" class="panel">
+  <button id="play" class="primary">▶ Play</button>
+  <button id="pause">❚❚ Pause</button>
+  <button id="restart">↺ Restart</button>
+  <span class="sep"></span>
+  <button data-speed="1" class="on">1×</button>
+  <button data-speed="2">2×</button>
+  <button data-speed="4">4×</button>
+  <span class="sep"></span>
+  <button data-cam="overview">Overview</button>
+  <button data-cam="robot">Robot</button>
+  <button data-cam="gui">Web page</button>
+  <button data-cam="top" class="hide-sm">Camera view</button>
+  <button data-cam="pendant" class="hide-sm">FlexPendant</button>
+  <button data-cam="jig" class="hide-sm">Jig</button>
+  <label><input type="checkbox" id="autocam" checked> Auto cam</label>
+  <label class="hide-sm"><input type="checkbox" id="labels" checked> Labels</label>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const $ = id => document.getElementById(id);
+const cssVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const SANS = '"IBM Plex Sans", "Segoe UI", Arial, sans-serif', MONO = '"IBM Plex Mono", Consolas, monospace';
+try {
+  await Promise.race([
+    Promise.all(['400 20px "IBM Plex Sans"', '600 20px "IBM Plex Sans"', '700 20px "IBM Plex Sans"', '400 20px "IBM Plex Mono"', '600 20px "IBM Plex Mono"'].map(f => document.fonts.load(f))),
+    new Promise(r => setTimeout(r, 2500)),
+  ]);
+} catch (e) { /* fall back to system fonts */ }
+
+// =====================================================================
+// Project data (robot base frame: X forward = scene +z, Y left = scene +x, Z up = scene +y)
+// =====================================================================
+const TABLE_Y = 0.75;
+const WO = { x:-0.322358, z:0.39039 };    // work object "white" (A3 sheet) origin, from RAPID
+const EO = { x:0.13768, z:0.47046 };      // work object "empty" (jig) origin, from RAPID
+const V3 = (x, y, z) => new THREE.Vector3(x, y, z);
+const inWhite = (X, Y, h = 0) => V3(WO.x + Y / 1000, TABLE_Y + h / 1000, WO.z + X / 1000);
+const inEmpty = (X, Y, h = 0) => V3(EO.x + Y / 1000, TABLE_Y + h / 1000, EO.z + X / 1000);
+const toWhite = p => ({ X:(p.z - WO.z) * 1000, Y:(p.x - WO.x) * 1000 });
+const MARKER = { X:147.52, Y:213.15, size:101 };
+const PX_PER_MM = 4.70;
+const P_HOME = inWhite(-55.28, 63.54, 315.34), P_APPROACH = inWhite(-1.07, 90.41, 211.32);
+const SHAPE_ID = { triangle:1, circle:2, square:3 };
+const PERIOD = { triangle:120, square:90, circle:360, hexagon:60, star:72 };
+const PLACE_ORIENT = { triangle:90, square:0, circle:0 };
+const ROT_FIX = { triangle:-10, square:-12, circle:0 };
+const TARGETS = ['circle', 'square', 'triangle'];
+const COLOR_ORDER = ['red', 'green', 'blue', 'black', 'white'];
+const COLORS = { red:'#cf2e2a', green:'#23935a', blue:'#2160c4', black:'#212327', white:'#ecece6', yellow:'#f1c21b' };
+const SLOTS = { triangle:[34.19, 50.21], circle:[149.94, 170.74], square:[145.20, 40.81], hexagon:[41.70, 159.07], star:[90.56, 100.18] };
+
+const ring = (n, r, a0 = 0) => Array.from({ length:n }, (_, i) => { const a = a0 + i * 2 * Math.PI / n; return [r * Math.cos(a), r * Math.sin(a)]; });
+// 2-D outlines in mm, (px, pz): px along scene x (= Y in white), pz along scene z (= X in white)
+const OUTLINE = {
+  triangle:ring(3, 60 / Math.sqrt(3), Math.PI / 2),
+  square:[[-25, -25], [25, -25], [25, 25], [-25, 25]],
+  circle:ring(48, 30),
+  hexagon:ring(6, 30, 0),
+  star:Array.from({ length:10 }, (_, i) => { const r = i % 2 ? 13 : 32, a = -Math.PI / 2 + i * Math.PI / 5; return [r * Math.cos(a), r * Math.sin(a)]; }),
+  magnet:ring(32, 12),
+};
+const SIZE_MM = { triangle:60, square:50, circle:60, hexagon:60, star:64, magnet:24 };
+const CONF = { triangle:0.94, square:0.96, circle:0.97, hexagon:0.91, star:0.93, magnet:0.58 };
+const PIECE_DEFS = [
+  { id:'T1', type:'triangle', color:'red',   X:65,  Y:75,  yaw:25 },
+  { id:'C1', type:'circle',   color:'blue',  X:222, Y:72,  yaw:0 },
+  { id:'T2', type:'triangle', color:'black', X:140, Y:112, yaw:-35 },
+  { id:'S1', type:'square',   color:'green', X:228, Y:330, yaw:30 },
+  { id:'S2', type:'square',   color:'red',   X:72,  Y:345, yaw:-14 },
+  { id:'C2', type:'circle',   color:'white', X:248, Y:210, yaw:0 },
+  { id:'H1', type:'hexagon',  color:'blue',  X:48,  Y:228, yaw:10 },
+  { id:'ST', type:'star',     color:'green', X:155, Y:376, yaw:8 },
+  { id:'M1', type:'magnet',   color:'yellow', X:14,  Y:14,  yaw:0 },
+  { id:'M2', type:'magnet',   color:'yellow', X:14,  Y:406, yaw:0 },
+  { id:'M3', type:'magnet',   color:'yellow', X:283, Y:14,  yaw:0 },
+  { id:'M4', type:'magnet',   color:'yellow', X:283, Y:406, yaw:0 },
+];
+const shortest = (a, p) => { let d = ((a % p) + p) % p; if (d > p / 2) d -= p; return d; };
+const fmt = v => String(Math.round(v * 100) / 100);
+const cap = s => s[0].toUpperCase() + s.slice(1);
+
+// =====================================================================
+// Scenarios
+// =====================================================================
+const VARIANTS = {
+  full:   { tab:'Full cycle', desc:'From start-up to quit: the Pi starts, the robot connects, the camera and AI find the shapes, and the robot places one triangle, one square and one circle.' },
+  colour: { tab:'Colour selection', desc:'The colour list only shows colours that are on the sheet. Choosing a colour filters the shape list; the robot picks only shapes of that colour.' },
+  errors: { tab:'Filters & retry', desc:'What the AI ignores (hexagon, star, magnets), what happens when the marker is covered, and how a missed pick is retried.' },
+};
+const TAB_ORDER = ['full', 'colour', 'errors'];
+let VID = (location.hash || '').slice(1);
+if (!VARIANTS[VID]) VID = 'full';
+
+// =====================================================================
+// Renderer, scene, camera
+// =====================================================================
+const canvas = $('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(42, 1, 0.02, 60);
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true; controls.maxPolarAngle = Math.PI * 0.495; controls.minDistance = 0.25; controls.maxDistance = 9;
+
+function applyTheme() {
+  const bg = cssVar('--scene') || '#cfd5da';
+  scene.background = new THREE.Color(bg);
+  scene.fog = new THREE.Fog(bg, 6.5, 15);
+}
+applyTheme();
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
+new MutationObserver(applyTheme).observe(document.documentElement, { attributes:true, attributeFilter:['data-theme'] });
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x8b9096, 1.05));
+const sun = new THREE.DirectionalLight(0xffffff, 1.55);
+sun.position.set(1.6, 4.2, 2.6); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -0.0004;
+Object.assign(sun.shadow.camera, { left:-2.4, right:2.4, top:2.4, bottom:-2.4, near:0.5, far:9 });
+scene.add(sun);
+
+// ---------------- helpers ----------------
+const mat = (color, o = {}) => new THREE.MeshStandardMaterial({ color, roughness:0.7, metalness:0.05, ...o });
+function box(w, h, d, material, x, y, z, parent = scene) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
+  m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true; parent.add(m); return m;
+}
+function cyl(r, h, material, x, y, z, parent = scene, seg = 24) {
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, seg), material);
+  m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true; parent.add(m); return m;
+}
+function spriteCanvas(text, { bg = 'rgba(23,33,43,0.9)', fg = '#ffffff', mono = false, px = 40 }) {
+  const c = document.createElement('canvas'), ctx = c.getContext('2d');
+  const font = `600 ${px}px ${mono ? MONO : SANS}`;
+  ctx.font = font; const w = Math.ceil(ctx.measureText(text).width) + px; const h = Math.round(px * 1.7);
+  c.width = w; c.height = h;
+  ctx.font = font; ctx.fillStyle = bg; ctx.beginPath(); ctx.roundRect(0, 0, w, h, h * 0.28); ctx.fill();
+  ctx.fillStyle = fg; ctx.textBaseline = 'middle'; ctx.fillText(text, px / 2, h / 2 + 1);
+  return c;
+}
+function textSprite(text, opts = {}) {
+  const size = opts.size ?? 0.16;
+  const c = spriteCanvas(text, opts);
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map:tex, depthTest:false, sizeAttenuation:false }));
+  const k = size * 0.22; s.scale.set(k * c.width / c.height, k, 1); s.renderOrder = 10; s.userData.size = size; return s;
+}
+function setSpriteText(s, text, opts = {}) {
+  const c = spriteCanvas(text, opts); s.material.map.dispose();
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; s.material.map = tex; s.material.needsUpdate = true;
+  const k = (s.userData.size ?? 0.16) * 0.22; s.scale.set(k * c.width / c.height, k, 1);
+}
+const labels = [];
+function addLabel(text, x, y, z, opts = {}, parent = scene) { const s = textSprite(text, opts); s.position.set(x, y, z); parent.add(s); labels.push(s); return s; }
+const worldOf = o => { const v = new THREE.Vector3(); o.getWorldPosition(v); return v; };
+const worldYaw = o => { const q = new THREE.Quaternion(); o.getWorldQuaternion(q); return 2 * Math.atan2(q.y, q.w); };
+function tube(points, radius, material, closed = false) {
+  const curve = new THREE.CatmullRomCurve3(points, closed, 'catmullrom', 0.3);
+  const m = new THREE.Mesh(new THREE.TubeGeometry(curve, 160, radius, 8, false), material); m.castShadow = true; scene.add(m); return curve;
+}
+function flatShape(pts, scale = 1) { return new THREE.Shape(pts.map(([px, pz]) => new THREE.Vector2(px * scale / 1000, -pz * scale / 1000))); }
+function extrude(shape, depth) { const g = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled:false, curveSegments:24 }); g.rotateX(-Math.PI / 2); return g; }
+
+// =====================================================================
+// Room, robot table, desk, controller
+// =====================================================================
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(16, 16), mat(0x9a9ea2, { roughness:0.95 }));
+floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
+box(9, 3.2, 0.12, mat(0xe3e5e2), 0.6, 1.6, -1.55);
+box(0.12, 3.2, 7, mat(0xe0e2df), -1.9, 1.6, 1.2);
+// hazard tape around the robot table
+const tapeMat = new THREE.MeshBasicMaterial({ color:0xe8b200 });
+[[0, -0.55, 1.5, 0.05], [0, 1.08, 1.5, 0.05]].forEach(([x, z, w, d]) => { const t = box(w, 0.002, d, tapeMat, x, 0.001, z); t.castShadow = false; });
+[[-0.75, 0.265, 0.05, 1.68], [0.75, 0.265, 0.05, 1.68]].forEach(([x, z, w, d]) => { const t = box(w, 0.002, d, tapeMat, x, 0.001, z); t.castShadow = false; });
+
+const alu = mat(0xb9bec4, { metalness:0.55, roughness:0.4 }), topMat = mat(0x4a4f56, { roughness:0.85 }), dark = mat(0x2d343c);
+box(1.1, 0.04, 1.15, topMat, 0, TABLE_Y - 0.02, 0.275);
+[[-0.52, -0.27], [0.52, -0.27], [-0.52, 0.82], [0.52, 0.82]].forEach(([x, z]) => box(0.045, TABLE_Y - 0.04, 0.045, alu, x, (TABLE_Y - 0.04) / 2, z));
+box(1.0, 0.04, 0.04, alu, 0, 0.12, -0.27); box(1.0, 0.04, 0.04, alu, 0, 0.12, 0.82);
+// operator desk with the Pi, monitor and keyboard
+const deskMat = mat(0xd7d2c7, { roughness:0.8 });
+box(0.56, 0.035, 0.5, deskMat, 1.125, TABLE_Y - 0.0175, 0.9);
+[[0.87, 0.67], [1.38, 0.67], [0.87, 1.13], [1.38, 1.13]].forEach(([x, z]) => box(0.035, TABLE_Y - 0.035, 0.035, alu, x, (TABLE_Y - 0.035) / 2, z));
+// robot controller cabinet
+const cab = new THREE.Group(); cab.position.set(1.75, 0, 0.52); scene.add(cab);
+box(0.5, 0.74, 0.42, mat(0xd9dcdf, { roughness:0.6 }), 0, 0.39, 0, cab);
+box(0.5, 0.04, 0.42, dark, 0, 0.78, 0, cab);
+box(0.4, 0.02, 0.36, dark, 0, 0.01, 0, cab);
+cyl(0.03, 0.02, mat(0x3a3a3a), -0.17, 0.62, 0.215, cab).rotation.x = Math.PI / 2;
+box(0.16, 0.05, 0.01, mat(0x9fb7c9), 0.1, 0.62, 0.212, cab);
+
+// =====================================================================
+// A3 sheet, ArUco marker, shapes, magnets
+// =====================================================================
+const sheetCenter = inWhite(148.5, 210, 0.5);
+const sheet = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.297), mat(0xf6f6f1, { roughness:0.95 }));
+sheet.rotation.x = -Math.PI / 2; sheet.position.copy(sheetCenter); sheet.receiveShadow = true; scene.add(sheet);
+const ARUCO_BITS = [[1, 0, 1, 1, 0], [0, 1, 0, 0, 1], [1, 1, 0, 1, 0], [0, 0, 1, 1, 1], [1, 0, 0, 1, 0]];
+function drawAruco(ctx, x, y, s) {   // s = side of the black square; 7×7 cells (border + 5×5)
+  const c = s / 7;
+  ctx.fillStyle = '#0c0c0c'; ctx.fillRect(x, y, s, s);
+  ctx.fillStyle = '#f8f8f4';
+  ARUCO_BITS.forEach((row, r) => row.forEach((b, k) => { if (b) ctx.fillRect(x + (k + 1) * c, y + (r + 1) * c, c + 0.5, c + 0.5); }));
+}
+const mkCanvas = document.createElement('canvas'); mkCanvas.width = mkCanvas.height = 280;
+drawAruco(mkCanvas.getContext('2d'), 0, 0, 280);
+const mkTex = new THREE.CanvasTexture(mkCanvas); mkTex.colorSpace = THREE.SRGBColorSpace; mkTex.magFilter = THREE.NearestFilter;
+const markerMesh = new THREE.Mesh(new THREE.PlaneGeometry(MARKER.size / 1000, MARKER.size / 1000), new THREE.MeshStandardMaterial({ map:mkTex, roughness:0.9 }));
+markerMesh.rotation.x = -Math.PI / 2; markerMesh.position.copy(inWhite(MARKER.X, MARKER.Y, 0.8)); markerMesh.receiveShadow = true; scene.add(markerMesh);
+// notebook used to cover the marker in the error scenario
+const notebook = box(0.13, 0.008, 0.17, mat(0x22406e), 0, -1, 0); notebook.visible = false;
+
+const pieces = PIECE_DEFS.map(def => {
+  const h = def.type === 'magnet' ? 0.006 : 0.008;
+  const geo = extrude(flatShape(OUTLINE[def.type]), h);
+  const m = new THREE.Mesh(geo, mat(COLORS[def.color], { roughness:0.55 }));
+  m.castShadow = true; m.receiveShadow = true; scene.add(m);
+  return { ...def, mesh:m, h, target:TARGETS.includes(def.type), state:'sheet' };
+});
+const pieceById = id => pieces.find(p => p.id === id);
+function resetPieces() {
+  pieces.forEach(p => {
+    scene.attach(p.mesh); p.mesh.position.copy(inWhite(p.X, p.Y, 0.6)); p.mesh.rotation.set(0, THREE.MathUtils.degToRad(p.yaw), 0);
+    p.mesh.visible = true; p.state = 'sheet';
+  });
+}
+
+// =====================================================================
+// Jig (work object empty) with five slots
+// =====================================================================
+const JIG = { X:92, Y:104, w:212, d:208 };   // centre in empty (mm) and size (Y along x, X along z)
+const jigCenter = inEmpty(JIG.X, JIG.Y);
+const plateShape = flatShape([[-JIG.w / 2, -JIG.d / 2], [JIG.w / 2, -JIG.d / 2], [JIG.w / 2, JIG.d / 2], [-JIG.w / 2, JIG.d / 2]]);
+Object.entries(SLOTS).forEach(([type, [X, Y]]) => {
+  const ox = Y - JIG.Y, oz = X - JIG.X;
+  plateShape.holes.push(new THREE.Path(OUTLINE[type].map(([px, pz]) => new THREE.Vector2((px * 1.07 + ox) / 1000, -(pz * 1.07 + oz) / 1000))));
+});
+const jigMat = mat(0x1c1f23, { roughness:0.5 });
+const jigBase = new THREE.Mesh(new THREE.BoxGeometry(JIG.w / 1000, 0.004, JIG.d / 1000), mat(0x2a2e33));
+jigBase.position.set(jigCenter.x, TABLE_Y + 0.002, jigCenter.z); jigBase.receiveShadow = true; scene.add(jigBase);
+const jigTop = new THREE.Mesh(extrude(plateShape, 0.008), jigMat);
+jigTop.position.set(jigCenter.x, TABLE_Y + 0.004, jigCenter.z); jigTop.castShadow = jigTop.receiveShadow = true; scene.add(jigTop);
+const slotPos = type => { const [X, Y] = SLOTS[type]; return inEmpty(X, Y, 4); };
+
+// =====================================================================
+// Camera rig (Basler) with view cone
+// =====================================================================
+const CAM_POS = V3(-0.112, 1.80, 0.5385);
+box(0.04, 1.9 - TABLE_Y, 0.04, alu, -0.535, TABLE_Y + (1.9 - TABLE_Y) / 2, 0.5385);
+box(0.46, 0.04, 0.04, alu, -0.32, 1.9, 0.5385);
+box(0.05, 0.05, 0.055, mat(0x1d5fa8, { roughness:0.5 }), CAM_POS.x, 1.855, CAM_POS.z);
+cyl(0.018, 0.045, mat(0x16181b), CAM_POS.x, 1.808, CAM_POS.z);
+const REG = { x0:-0.36, x1:0.14, z0:0.355, z1:0.72 };   // what the camera sees
+const coneMat = new THREE.LineBasicMaterial({ color:0x38bdf8, transparent:true, opacity:0.15 });
+const lens = V3(CAM_POS.x, 1.786, CAM_POS.z);
+const corners = [[REG.x0, REG.z0], [REG.x1, REG.z0], [REG.x1, REG.z1], [REG.x0, REG.z1]].map(([x, z]) => V3(x, TABLE_Y + 0.002, z));
+const conePts = []; corners.forEach((c, i) => { conePts.push(lens, c, c, corners[(i + 1) % 4]); });
+const cone = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(conePts), coneMat); scene.add(cone);
+const flashMat = new THREE.MeshBasicMaterial({ color:0x7dd3fc, transparent:true, opacity:0, depthWrite:false });
+const flashQuad = new THREE.Mesh(new THREE.PlaneGeometry(REG.x1 - REG.x0, REG.z1 - REG.z0), flashMat);
+flashQuad.rotation.x = -Math.PI / 2; flashQuad.position.set((REG.x0 + REG.x1) / 2, TABLE_Y + 0.003, (REG.z0 + REG.z1) / 2); scene.add(flashQuad);
+let flashLevel = 0;
+const flash = (lvl = 0.5) => { flashLevel = Math.max(flashLevel, lvl); };
+
+// =====================================================================
+// Raspberry Pi, monitor, keyboard, button box
+// =====================================================================
+const PI_POS = V3(0.93, TABLE_Y, 0.93);
+box(0.095, 0.026, 0.068, mat(0xe9e9e9, { roughness:0.4 }), PI_POS.x, TABLE_Y + 0.013, PI_POS.z);
+box(0.086, 0.004, 0.058, mat(0x1b7a3e), PI_POS.x, TABLE_Y + 0.0275, PI_POS.z);
+box(0.02, 0.012, 0.02, mat(0xbfc6cc, { metalness:0.6 }), PI_POS.x - 0.02, TABLE_Y + 0.035, PI_POS.z);
+const piLedMat = new THREE.MeshBasicMaterial({ color:0x1f3d2a });
+const piLed = new THREE.Mesh(new THREE.SphereGeometry(0.0045, 10, 8), piLedMat); piLed.position.set(PI_POS.x + 0.035, TABLE_Y + 0.031, PI_POS.z + 0.022); scene.add(piLed);
+let ledLevel = 0;
+const MON = V3(1.12, TABLE_Y + 0.33, 0.78);
+const MON_W = 1280, MON_H = 800;
+const monCanvas = document.createElement('canvas'); monCanvas.width = MON_W; monCanvas.height = MON_H;
+const mx = monCanvas.getContext('2d');
+const monTex = new THREE.CanvasTexture(monCanvas); monTex.colorSpace = THREE.SRGBColorSpace; monTex.anisotropy = 8;
+box(0.64, 0.41, 0.025, mat(0x15181c), MON.x, MON.y, MON.z - 0.014);
+const monScreen = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.3875), new THREE.MeshBasicMaterial({ map:monTex, toneMapped:false }));
+monScreen.position.copy(MON); scene.add(monScreen);
+box(0.05, 0.13, 0.03, mat(0x2a2e33), MON.x, TABLE_Y + 0.065, MON.z - 0.03); box(0.22, 0.012, 0.16, mat(0x2a2e33), MON.x, TABLE_Y + 0.006, MON.z - 0.02);
+box(0.36, 0.016, 0.12, mat(0x30353b), MON.x, TABLE_Y + 0.008, 0.99);
+box(0.06, 0.014, 0.09, mat(0x30353b), 1.36, TABLE_Y + 0.007, 1.0);
+const BUTTON_POS = V3(0.40, TABLE_Y, 0.79);
+box(0.09, 0.07, 0.09, mat(0x8d969e, { metalness:0.3 }), BUTTON_POS.x, TABLE_Y + 0.035, BUTTON_POS.z);
+const yellowMat = new THREE.MeshStandardMaterial({ color:0xf5c518, emissive:0x000000, roughness:0.4 });
+const yButton = cyl(0.026, 0.022, yellowMat, BUTTON_POS.x, TABLE_Y + 0.081, BUTTON_POS.z);
+let buttonWaiting = false, buttonPressed = false;
+
+// FlexPendant on the controller
+const PEND = V3(1.75, 0.66, 0.755);
+const pendCanvas = document.createElement('canvas'); pendCanvas.width = 560; pendCanvas.height = 380;
+const pctx = pendCanvas.getContext('2d');
+const pendTex = new THREE.CanvasTexture(pendCanvas); pendTex.colorSpace = THREE.SRGBColorSpace; pendTex.anisotropy = 8;
+box(0.27, 0.19, 0.035, mat(0x30363d), PEND.x, PEND.y, PEND.z - 0.019);
+const pendScreen = new THREE.Mesh(new THREE.PlaneGeometry(0.184, 0.125), new THREE.MeshBasicMaterial({ map:pendTex, toneMapped:false }));
+pendScreen.position.set(PEND.x - 0.02, PEND.y + 0.005, PEND.z); scene.add(pendScreen);
+cyl(0.012, 0.012, mat(0xd11f1f), PEND.x + 0.105, PEND.y + 0.06, PEND.z).rotation.x = Math.PI / 2;
+cyl(0.01, 0.012, mat(0x1a1a1a), PEND.x + 0.105, PEND.y - 0.03, PEND.z).rotation.x = Math.PI / 2;
+
+// =====================================================================
+// Cables: USB (camera → Pi), Ethernet (Pi ↔ controller), HDMI, robot cable
+// =====================================================================
+const usbCurve = tube([V3(CAM_POS.x, 1.83, CAM_POS.z), V3(-0.3, 1.875, 0.55), V3(-0.51, 1.86, 0.555), V3(-0.51, 1.2, 0.56), V3(-0.51, TABLE_Y + 0.006, 0.6),
+  V3(-0.45, TABLE_Y + 0.006, 0.83), V3(0.2, TABLE_Y + 0.006, 0.835), V3(0.6, TABLE_Y + 0.006, 0.835), V3(0.87, TABLE_Y + 0.006, 0.9), V3(PI_POS.x - 0.05, TABLE_Y + 0.012, PI_POS.z)],
+  0.0035, mat(0x2b6cb0));
+const ethCurve = tube([V3(PI_POS.x + 0.03, TABLE_Y + 0.015, PI_POS.z - 0.035), V3(PI_POS.x + 0.04, TABLE_Y + 0.006, 0.74), V3(0.95, TABLE_Y - 0.02, 0.665),
+  V3(0.96, 0.4, 0.66), V3(0.98, 0.02, 0.64), V3(1.25, 0.01, 0.6), V3(1.46, 0.04, 0.56), V3(1.5, 0.25, 0.55)], 0.0045, mat(0x26a269));
+tube([V3(PI_POS.x + 0.04, TABLE_Y + 0.012, PI_POS.z), V3(1.02, TABLE_Y + 0.006, 0.86), V3(MON.x - 0.02, TABLE_Y + 0.02, MON.z - 0.04)], 0.004, mat(0x202326));
+tube([V3(1.55, 0.05, 0.42), V3(1.2, 0.015, 0.2), V3(0.55, 0.015, -0.05), V3(0.1, 0.015, -0.42), V3(0.0, 0.3, -0.4), V3(0.0, TABLE_Y - 0.06, -0.29), V3(0.0, TABLE_Y + 0.05, -0.12)], 0.013, mat(0x2b2f35));
+
+// =====================================================================
+// Robot: 6-axis arm with suction tool (simplified kinematics, tool always vertical)
+// =====================================================================
+const RB = { base:V3(0, TABLE_Y, 0), L1:0.40, L2:0.40, TOOL:0.20, SH:0.33 };
+const rWhite = mat(0xe7e9ec, { roughness:0.45, metalness:0.12 }), rDark = mat(0x39414b, { roughness:0.55 }), rJoint = mat(0x5a6470, { roughness:0.5 });
+const robotG = new THREE.Group(); robotG.position.copy(RB.base); scene.add(robotG);
+cyl(0.12, 0.025, rDark, 0, 0.0125, 0, robotG);
+cyl(0.095, 0.1, rWhite, 0, 0.075, 0, robotG);
+const yawG = new THREE.Group(); yawG.position.y = 0.125; robotG.add(yawG);
+cyl(0.09, 0.07, rJoint, 0, 0.035, 0, yawG);
+box(0.15, 0.16, 0.14, rWhite, 0, 0.14, -0.015, yawG);
+const shG = new THREE.Group(); shG.position.y = RB.SH - 0.125; yawG.add(shG);
+cyl(0.075, 0.2, rJoint, 0, 0, 0, shG).rotation.z = Math.PI / 2;
+box(0.09, 0.1, RB.L1, rWhite, 0, 0, RB.L1 / 2, shG);
+const elG = new THREE.Group(); elG.position.z = RB.L1; shG.add(elG);
+cyl(0.062, 0.16, rJoint, 0, 0, 0, elG).rotation.z = Math.PI / 2;
+box(0.07, 0.075, RB.L2 - 0.05, rWhite, 0, 0, (RB.L2 - 0.05) / 2, elG);
+const wrG = new THREE.Group(); wrG.position.z = RB.L2; elG.add(wrG);
+cyl(0.045, 0.11, rJoint, 0, 0, 0, wrG).rotation.z = Math.PI / 2;
+const toolG = new THREE.Group(); wrG.add(toolG);
+cyl(0.034, 0.03, rDark, 0, -0.035, 0, toolG);
+box(0.05, 0.035, 0.05, mat(0x7c8792, { metalness:0.4 }), 0, -0.065, 0, toolG);
+box(0.012, 0.01, 0.03, mat(0xd8a400), 0.02, -0.065, 0.026, toolG);
+cyl(0.011, 0.11, mat(0xb7bec6, { metalness:0.6, roughness:0.3 }), 0, -0.135, 0, toolG, 16);
+cyl(0.019, 0.016, mat(0x111111, { roughness:0.9 }), 0, -RB.TOOL + 0.014, 0, toolG, 20);
+cyl(0.023, 0.006, mat(0x111111, { roughness:0.9 }), 0, -RB.TOOL + 0.003, 0, toolG, 20);
+const vacRing = new THREE.Mesh(new THREE.TorusGeometry(0.027, 0.004, 8, 28), new THREE.MeshBasicMaterial({ color:0x22c55e }));
+vacRing.rotation.x = Math.PI / 2; vacRing.position.y = -RB.TOOL + 0.02; vacRing.visible = false; toolG.add(vacRing);
+const tip = new THREE.Object3D(); tip.position.y = -RB.TOOL; toolG.add(tip);
+const robot = { P:P_HOME.clone(), toolYaw:0 };
+function applyRobot() {
+  const P = robot.P, { L1, L2 } = RB;
+  const dx = P.x - RB.base.x, dz = P.z - RB.base.z;
+  const r = Math.hypot(dx, dz), h = P.y + RB.TOOL - (RB.base.y + RB.SH);
+  const d = Math.min(Math.hypot(r, h), L1 + L2 - 0.001);
+  const c = THREE.MathUtils.clamp((d * d - L1 * L1 - L2 * L2) / (2 * L1 * L2), -1, 1), g = Math.acos(c);
+  const th1 = Math.atan2(h, r) + Math.atan2(L2 * Math.sin(g), L1 + L2 * Math.cos(g));
+  yawG.rotation.y = Math.atan2(dx, dz); shG.rotation.x = -th1; elG.rotation.x = g; wrG.rotation.x = th1 - g; toolG.rotation.y = robot.toolYaw;
+}
+applyRobot();
+const toolTag = textSprite('MoveJ', { size:0.11, bg:'rgba(11,110,127,0.92)', mono:true }); toolTag.visible = false; scene.add(toolTag);
+function tag(text) { if (!text) { toolTag.visible = false; return; } setSpriteText(toolTag, text, { bg:'rgba(11,110,127,0.92)', mono:true }); toolTag.visible = true; }
+function vacuum(on) { vacRing.visible = on; }
+
+// =====================================================================
+// Operator
+// =====================================================================
+function makeWorker() {
+  const g = new THREE.Group();
+  const jacket = mat(0x2e5583), skin = mat(0xc8956d), trousers = mat(0x2b3138);
+  const leg = x => { const p = new THREE.Group(); p.position.set(x, 0.88, 0); box(0.13, 0.86, 0.15, trousers, 0, -0.43, 0, p); g.add(p); return p; };
+  const legL = leg(-0.1), legR = leg(0.1);
+  box(0.44, 0.6, 0.25, jacket, 0, 1.18, 0, g);
+  box(0.45, 0.04, 0.26, mat(0xd9e1e8), 0, 1.02, 0, g);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.11, 20, 16), skin); head.position.y = 1.62; head.castShadow = true; g.add(head);
+  const glasses = box(0.16, 0.035, 0.02, mat(0x1d2730, { roughness:0.2 }), 0, 1.64, 0.1, g); glasses.castShadow = false;
+  const hair = new THREE.Mesh(new THREE.SphereGeometry(0.115, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2.2), mat(0x2b2018)); hair.position.y = 1.64; g.add(hair);
+  const arm = x => { const p = new THREE.Group(); p.position.set(x, 1.44, 0); box(0.1, 0.6, 0.11, jacket, 0, -0.3, 0, p);
+    const hnd = new THREE.Mesh(new THREE.SphereGeometry(0.05, 12, 10), skin); hnd.position.y = -0.63; p.add(hnd); g.add(p); return p; };
+  const armL = arm(-0.28), armR = arm(0.28);
+  const carry = new THREE.Object3D(); carry.position.set(0, 1.05, 0.55); g.add(carry);
+  g.userData = { legL, legR, armL, armR, carry, walking:false, phase:0 };
+  return g;
+}
+const worker = makeWorker(); scene.add(worker);
+const STAND = { desk:[1.56, 1.40, -2.55], pendant:[1.95, 1.1], button:[0.40, 1.16], marker:[-0.11, 1.16], start:[1.9, 1.6] };
+
+// =====================================================================
+// Labels
+// =====================================================================
+addLabel('ABB robot · RAPID', 0, 1.62, -0.05);
+addLabel('Basler camera', CAM_POS.x, 2.0, CAM_POS.z, { size:0.12 });
+addLabel('A3 sheet · work object "white"', -0.21, TABLE_Y + 0.03, 0.74, { size:0.11 });
+addLabel('ArUco marker · 101 mm', inWhite(MARKER.X, MARKER.Y).x, TABLE_Y + 0.12, inWhite(MARKER.X, MARKER.Y).z, { size:0.1 });
+addLabel('Jig · work object "empty"', jigCenter.x + 0.05, TABLE_Y + 0.14, jigCenter.z + 0.02, { size:0.11 });
+addLabel('Raspberry Pi 4 · Python + YOLO', PI_POS.x - 0.06, TABLE_Y + 0.13, PI_POS.z + 0.08, { size:0.11 });
+addLabel('Web page · localhost:5001', MON.x, MON.y + 0.27, MON.z, { size:0.11 });
+addLabel('Robot controller + FlexPendant', 1.78, 0.9, 0.4, { size:0.11 });
+addLabel('Yellow button · diOkButton', BUTTON_POS.x, TABLE_Y + 0.2, BUTTON_POS.z, { size:0.1 });
+addLabel('Ethernet · TCP port 5000', 1.22, 0.14, 0.62, { size:0.1, bg:'rgba(30,110,70,0.9)' });
+addLabel('USB 3', -0.51, 1.35, 0.6, { size:0.09, bg:'rgba(43,108,176,0.9)' });
+
+// =====================================================================
+// Shared 2-D drawing: what the camera sees, with the program's overlays
+// =====================================================================
+function rr(c, x, y, w, h, r, fill, stroke, lw = 2) {
+  c.beginPath(); c.roundRect(x, y, w, h, r);
+  if (fill) { c.fillStyle = fill; c.fill(); }
+  if (stroke) { c.strokeStyle = stroke; c.lineWidth = lw; c.stroke(); }
+}
+function txt(c, s, x, y, { size = 24, weight = 400, color = '#17212b', align = 'left', base = 'middle', mono = false } = {}) {
+  c.font = `${weight} ${size}px ${mono ? MONO : SANS}`; c.fillStyle = color; c.textAlign = align; c.textBaseline = base; c.fillText(s, x, y);
+}
+function camMap(rect) {
+  const s = Math.min(rect.w / (REG.x1 - REG.x0), rect.h / (REG.z1 - REG.z0));
+  const ox = rect.x + (rect.w - (REG.x1 - REG.x0) * s) / 2, oy = rect.y + (rect.h - (REG.z1 - REG.z0) * s) / 2;
+  return { s, u:x => ox + (x - REG.x0) * s, v:z => oy + (z - REG.z0) * s };
+}
+function polyOf(p) {   // outline in scene coordinates (x, z)
+  const pos = p.mesh.position, yaw = p.mesh.rotation.y, cs = Math.cos(yaw), sn = Math.sin(yaw);
+  return OUTLINE[p.type].map(([px, pz]) => [pos.x + (px * cs + pz * sn) / 1000, pos.z + (-px * sn + pz * cs) / 1000]);
+}
+function pathOf(c, m, pts) { c.beginPath(); pts.forEach(([x, z], i) => i ? c.lineTo(m.u(x), m.v(z)) : c.moveTo(m.u(x), m.v(z))); c.closePath(); }
+function infoOf(p) {
+  const { X, Y } = toWhite(p.mesh.position);
+  const yawDeg = THREE.MathUtils.radToDeg(p.mesh.rotation.y), per = PERIOD[p.type];
+  const angle = p.type === 'circle' ? 0 : (((-yawDeg + PLACE_ORIENT[p.type]) % per) + per) % per;
+  const turn = p.type === 'circle' ? 0 : shortest(PLACE_ORIENT[p.type] - angle, per);
+  return { X, Y, angle, turn, size:SIZE_MM[p.type] };
+}
+// The objects list the Pi would build from one picture
+function getObjects() {
+  if (sys.markerCovered) return [];
+  const list = pieces.filter(p => p.target && p.state === 'sheet').map(p => ({ piece:p, ...infoOf(p) }));
+  list.sort((a, b) => Math.floor(a.Y * PX_PER_MM / 50) - Math.floor(b.Y * PX_PER_MM / 50) || a.X - b.X);
+  list.forEach((o, i) => { o.idx = i + 1; o.label = `[${i + 1}] ${o.piece.color} ${o.piece.type}`; });
+  return list;
+}
+function drawCam(c, rect, mode, opts = {}) {
+  const m = camMap(rect), k = m.s / 1520;   // k scales line widths and fonts with the picture size
+  c.save(); c.beginPath(); c.rect(rect.x, rect.y, rect.w, rect.h); c.clip();
+  c.fillStyle = '#585e65'; c.fillRect(rect.x, rect.y, rect.w, rect.h);
+  // jig edge at the right border of the picture
+  c.fillStyle = '#1c1f23'; c.fillRect(m.u(jigCenter.x - JIG.w / 2000), m.v(jigCenter.z - JIG.d / 2000), JIG.w / 1000 * m.s, JIG.d / 1000 * m.s);
+  // sheet
+  const s0 = inWhite(0, 0), s1 = inWhite(297, 420);
+  c.fillStyle = '#f1efe6'; c.fillRect(m.u(s0.x), m.v(s0.z), (s1.x - s0.x) * m.s, (s1.z - s0.z) * m.s);
+  // marker
+  const mc = inWhite(MARKER.X, MARKER.Y), half = MARKER.size / 2000;
+  drawAruco(c, m.u(mc.x - half), m.v(mc.z - half), MARKER.size / 1000 * m.s);
+  if (sys.markerCovered) { c.fillStyle = '#22406e'; c.fillRect(m.u(mc.x - 0.07), m.v(mc.z - 0.09), 0.13 * m.s, 0.17 * m.s); }
+  // pieces and magnets
+  const onSheet = pieces.filter(p => p.state === 'sheet');
+  onSheet.forEach(p => {
+    pathOf(c, m, polyOf(p)); c.fillStyle = COLORS[p.color]; c.fill();
+    c.lineWidth = 2 * k; c.strokeStyle = 'rgba(0,0,0,0.35)'; c.stroke();
+  });
+  const objs = getObjects();
+  const lw = opts.lw ?? Math.max(2, 3 * k), fs = opts.fs ?? Math.max(11, 17 * k);
+  const label = (s, x, y, color = '#ffffff', bg = 'rgba(15,23,32,0.82)') => {
+    c.font = `600 ${fs}px ${SANS}`; const w = c.measureText(s).width + fs * 0.7;
+    rr(c, x - w / 2, y - fs * 0.75, w, fs * 1.5, fs * 0.35, bg); txt(c, s, x, y + 0.5, { size:fs, weight:600, color, align:'center' });
+  };
+  const centreOf = p => [m.u(p.mesh.position.x), m.v(p.mesh.position.z)];
+  if (mode === 'ai' || mode === 'filter') {
+    onSheet.forEach(p => {
+      const keep = p.target, [cx, cy] = centreOf(p);
+      pathOf(c, m, polyOf(p));
+      if (mode === 'ai' || keep) { c.setLineDash([]); c.strokeStyle = keep || mode === 'ai' ? '#22d36b' : '#ef4444'; c.lineWidth = lw; c.stroke(); }
+      else { c.setLineDash([6 * k + 3, 5 * k + 3]); c.strokeStyle = '#ef4444'; c.lineWidth = lw; c.stroke(); c.setLineDash([]); }
+      const cls = p.type === 'magnet' ? 'circle' : p.type;
+      if (mode === 'ai') label(`${cls} ${CONF[p.type].toFixed(2)}`, cx, cy - (p.type === 'magnet' ? 22 : 40) * k * 1.4);
+      else if (!keep) {
+        c.strokeStyle = '#ef4444'; c.lineWidth = lw * 1.3; const r = (p.type === 'magnet' ? 10 : 18) * k * 1.4;
+        c.beginPath(); c.moveTo(cx - r, cy - r); c.lineTo(cx + r, cy + r); c.moveTo(cx + r, cy - r); c.lineTo(cx - r, cy + r); c.stroke();
+        label(p.type === 'magnet' ? '24 mm · too small' : `${p.type} · not group 1`, cx, cy - (p.type === 'magnet' ? 24 : 42) * k * 1.4, '#ffd2d2', 'rgba(110,20,20,0.88)');
+      } else label(p.type, cx, cy - 42 * k * 1.4);
+    });
+  }
+  if (mode === 'geom') {
+    objs.forEach(o => {
+      const p = o.piece, [cx, cy] = centreOf(p);
+      pathOf(c, m, polyOf(p)); c.strokeStyle = '#22d36b'; c.lineWidth = lw; c.stroke();
+      c.fillStyle = '#facc15'; c.beginPath(); c.arc(cx, cy, 5 * k + 2, 0, 7); c.fill();
+      if (p.type !== 'circle') {
+        const yaw = p.mesh.rotation.y, L = 46 * k * 1.4;
+        const dir = p.type === 'square' ? [Math.cos(yaw), -Math.sin(yaw)] : [Math.sin(yaw), Math.cos(yaw)];
+        c.strokeStyle = '#facc15'; c.lineWidth = lw; c.beginPath(); c.moveTo(cx, cy); c.lineTo(cx + dir[0] * L, cy + dir[1] * L); c.stroke();
+      }
+      label(p.type === 'circle' ? 'angle 0' : `angle ${o.angle.toFixed(0)}° · turn ${o.turn.toFixed(0)}°`, cx, cy - 44 * k * 1.4);
+    });
+  }
+  if (mode === 'aruco' || mode === 'gui') {
+    const [mcx, mcy] = [m.u(mc.x), m.v(mc.z)];
+    if (!sys.markerCovered) {
+      const sq = MARKER.size / 1000 * m.s;
+      c.strokeStyle = '#e044d0'; c.lineWidth = lw; c.strokeRect(mcx - sq / 2, mcy - sq / 2, sq, sq);
+      objs.forEach(o => {
+        const [cx, cy] = centreOf(o.piece);
+        c.strokeStyle = mode === 'aruco' ? 'rgba(224,68,208,0.95)' : 'rgba(224,68,208,0.55)'; c.lineWidth = mode === 'aruco' ? lw : 1.2;
+        if (mode === 'aruco') c.setLineDash([6, 5]);
+        c.beginPath(); c.moveTo(mcx, mcy); c.lineTo(cx, cy); c.stroke(); c.setLineDash([]);
+      });
+    }
+    if (mode === 'aruco') {
+      [[-0.5, -0.5], [0.5, -0.5], [0.5, 0.5], [-0.5, 0.5]].forEach(([a, b]) => { c.fillStyle = '#e044d0'; c.beginPath(); c.arc(mcx + a * MARKER.size / 1000 * m.s, mcy + b * MARKER.size / 1000 * m.s, 5 * k + 2, 0, 7); c.fill(); });
+      const L = 0.09 * m.s;
+      const arrow = (dx, dy, col, name) => {
+        c.strokeStyle = col; c.fillStyle = col; c.lineWidth = lw * 1.4; c.beginPath(); c.moveTo(mcx, mcy); c.lineTo(mcx + dx * L, mcy + dy * L); c.stroke();
+        const ex = mcx + dx * L, ey = mcy + dy * L, a = Math.atan2(dy, dx), hs = 12 * k + 6;
+        c.beginPath(); c.moveTo(ex, ey); c.lineTo(ex - hs * Math.cos(a - 0.45), ey - hs * Math.sin(a - 0.45)); c.lineTo(ex - hs * Math.cos(a + 0.45), ey - hs * Math.sin(a + 0.45)); c.fill();
+        label(name, ex + dx * 22 * k * 1.4, ey + dy * 20 * k * 1.4, '#fff', col);
+      };
+      arrow(0, 1, '#dc2626', '+X'); arrow(1, 0, '#16a34a', '+Y');
+      objs.forEach(o => { const [cx, cy] = centreOf(o.piece); label(`X ${o.X.toFixed(0)} · Y ${o.Y.toFixed(0)}`, cx, cy - 42 * k * 1.4); });
+    }
+  }
+  if (mode === 'gui') {
+    const sel = opts.selected;
+    if (sys.markerCovered) {
+      onSheet.filter(p => p.target).forEach(p => { pathOf(c, m, polyOf(p)); c.strokeStyle = '#f59e0b'; c.lineWidth = lw; c.stroke(); });
+      label('ArUco NOT found · no positions', rect.x + rect.w / 2, rect.y + 28, '#fff', 'rgba(170,30,30,0.92)');
+    }
+    objs.forEach(o => {
+      const p = o.piece, [cx, cy] = centreOf(p), on = sel === p.id;
+      pathOf(c, m, polyOf(p)); c.strokeStyle = on ? '#facc15' : '#22d36b'; c.lineWidth = on ? lw * 2.2 : lw; c.stroke();
+      c.fillStyle = '#facc15'; c.beginPath(); c.arc(cx, cy, 4 * k + 2, 0, 7); c.fill();
+      label(o.label, cx, cy - 46 * k * 1.4, on ? '#111' : '#fff', on ? '#facc15' : 'rgba(15,23,32,0.82)');
+      if (p.type !== 'circle') label(`angle=${o.angle.toFixed(1)} turn=${o.turn.toFixed(1)}`, cx, cy + 46 * k * 1.4, '#d7f7e3', 'rgba(15,23,32,0.7)');
+    });
+  }
+  c.restore();
+}
+
+// =====================================================================
+// Web page on the monitor (served by Flask on the Pi, port 5001)
+// =====================================================================
+const gui = { mode:'off', robot:'none', colour:'any', open:false, sel:null, status:null, tap:null };
+const sys = { running:false, markerCovered:false, inferMs:0, nextInfer:0 };
+const PIC = { x:20, y:120, w:800, h:584 };
+const DROP = { x:840, y:146, w:420, h:50 };
+const ROW = i => ({ x:840, y:238 + i * 56, w:420, h:50 });
+const OPT = i => ({ x:840, y:200 + i * 46, w:420, h:44 });
+const SEND = { x:840, y:604, w:270, h:56 }, QUIT = { x:1124, y:604, w:136, h:56 };
+const centreOfRect = r => [r.x + r.w / 2, r.y + r.h / 2];
+function colourCounts(objs) { return COLOR_ORDER.map(cn => [cn, objs.filter(o => o.piece.color === cn).length]).filter(([, n]) => n > 0); }
+function listedObjects() { const objs = getObjects(); return gui.colour === 'any' ? objs : objs.filter(o => o.piece.color === gui.colour); }
+function chip(c, x, y, text, bg, fg) { c.font = `600 21px ${SANS}`; const w = c.measureText(text).width + 30; rr(c, x - w, y, w, 36, 18, bg); txt(c, text, x - w / 2, y + 19, { size:21, weight:600, color:fg, align:'center' }); return x - w - 10; }
+function drawGui(c) {
+  c.fillStyle = '#eef1f4'; c.fillRect(0, 0, MON_W, MON_H);
+  c.fillStyle = '#dfe4e9'; c.fillRect(0, 0, MON_W, 44);
+  [['#f87171', 22], ['#fbbf24', 44], ['#4ade80', 66]].forEach(([col, x]) => { c.fillStyle = col; c.beginPath(); c.arc(x, 22, 7, 0, 7); c.fill(); });
+  rr(c, 100, 8, 520, 28, 14, '#ffffff'); txt(c, 'localhost:5001', 118, 23, { size:18, color:'#3a4653' });
+  c.fillStyle = '#16212d'; c.fillRect(0, 44, MON_W, 60);
+  txt(c, 'Shape picking · Group 1', 24, 75, { size:28, weight:700, color:'#ffffff' });
+  const rs = { none:['Robot: not connected', '#475569', '#fff'], ready:['Robot: ready', '#15803d', '#fff'], busy:['Robot: busy', '#d97706', '#111'], off:['Robot: disconnected', '#475569', '#fff'] }[gui.robot];
+  let x = chip(c, MON_W - 20, 56, `AI inference: ${sys.inferMs || '–'} ms`, '#26384a', '#d6e6f5');
+  chip(c, x, 56, rs[0], rs[1], rs[2]);
+  // camera picture with overlays
+  rr(c, PIC.x - 2, PIC.y - 2, PIC.w + 4, PIC.h + 4, 6, '#0f1720');
+  drawCam(c, PIC, 'gui', { selected:gui.sel });
+  const objs = getObjects();
+  txt(c, sys.markerCovered ? 'ArUco NOT found · no positions' : `ArUco found · scale ${PX_PER_MM.toFixed(2)} px/mm · ${objs.length} shapes`, 22, 734, { size:22, weight:600, color:sys.markerCovered ? '#b91c1c' : '#17212b' });
+  txt(c, `AI inference time: ${sys.inferMs || '–'} ms ${sys.inferMs ? '(OK, limit 3 s)' : ''}`, 22, 768, { size:20, color:'#4a5865', mono:true });
+  // right column
+  txt(c, 'COLOUR', 842, 130, { size:16, weight:700, color:'#5a6773' });
+  const counts = colourCounts(objs);
+  const dropText = gui.colour === 'any' ? `Any colour (${objs.length})` : `${cap(gui.colour)} (${objs.filter(o => o.piece.color === gui.colour).length})`;
+  rr(c, DROP.x, DROP.y, DROP.w, DROP.h, 8, '#ffffff', '#9aa6b2', 2);
+  if (gui.colour !== 'any') { c.fillStyle = COLORS[gui.colour]; c.beginPath(); c.arc(DROP.x + 24, DROP.y + 25, 9, 0, 7); c.fill(); c.strokeStyle = '#555'; c.lineWidth = 1; c.stroke(); }
+  txt(c, dropText, DROP.x + (gui.colour === 'any' ? 16 : 42), DROP.y + 26, { size:22, weight:600 });
+  txt(c, '▾', DROP.x + DROP.w - 28, DROP.y + 25, { size:22, color:'#5a6773' });
+  txt(c, 'SHAPES', 842, 222, { size:16, weight:700, color:'#5a6773' });
+  const list = listedObjects();
+  if (!list.length) txt(c, sys.markerCovered ? 'No positions – marker not found' : 'No shapes of this colour', 842, 266, { size:20, color:'#7a8794' });
+  list.slice(0, 6).forEach((o, i) => {
+    const r = ROW(i), on = gui.sel === o.piece.id;
+    rr(c, r.x, r.y, r.w, r.h, 8, on ? '#fff7d1' : '#ffffff', on ? '#d4a900' : '#c9d1d9', on ? 3 : 1.5);
+    c.fillStyle = COLORS[o.piece.color]; c.beginPath(); c.arc(r.x + 22, r.y + 25, 10, 0, 7); c.fill(); c.strokeStyle = '#555'; c.lineWidth = 1; c.stroke();
+    txt(c, o.label, r.x + 42, r.y + 25, { size:21, weight:600 });
+    txt(c, `X ${o.X.toFixed(1)}  Y ${o.Y.toFixed(1)}`, r.x + r.w - 12, r.y + 25, { size:17, color:'#5a6773', align:'right', mono:true });
+  });
+  const busy = gui.robot !== 'ready';
+  rr(c, SEND.x, SEND.y, SEND.w, SEND.h, 10, busy ? '#9bb8a6' : '#15803d'); txt(c, 'Send to robot', SEND.x + SEND.w / 2, SEND.y + 29, { size:23, weight:700, color:'#fff', align:'center' });
+  rr(c, QUIT.x, QUIT.y, QUIT.w, QUIT.h, 10, '#b91c1c'); txt(c, 'Quit', QUIT.x + QUIT.w / 2, QUIT.y + 29, { size:23, weight:700, color:'#fff', align:'center' });
+  rr(c, 840, 680, 420, 96, 10, '#ffffff', '#c9d1d9', 1.5);
+  if (gui.status) {
+    txt(c, gui.status.title, 858, 708, { size:20, weight:700, color:gui.status.ok ? '#15803d' : '#b91c1c' });
+    txt(c, gui.status.text, 858, 746, { size:18, color:'#33414e', mono:true });
+  } else txt(c, 'Choose a shape, then Send.', 858, 728, { size:20, color:'#7a8794' });
+  if (gui.open) {
+    const opts = [['any', `Any colour (${objs.length})`], ...counts.map(([cn, n]) => [cn, `${cap(cn)} (${n})`])];
+    rr(c, OPT(0).x - 2, OPT(0).y - 2, 424, opts.length * 46 + 4, 8, '#ffffff', '#6b7785', 2);
+    opts.forEach(([cn, t], i) => {
+      const r = OPT(i), on = gui.colour === cn;
+      if (on) rr(c, r.x, r.y, r.w, r.h, 6, '#e5f0ff');
+      if (cn !== 'any') { c.fillStyle = COLORS[cn]; c.beginPath(); c.arc(r.x + 24, r.y + 22, 9, 0, 7); c.fill(); c.strokeStyle = '#555'; c.lineWidth = 1; c.stroke(); }
+      txt(c, t, r.x + (cn === 'any' ? 16 : 44), r.y + 23, { size:21, weight:on ? 700 : 400 });
+    });
+  }
+}
+function drawMonTerminal(c) {
+  c.fillStyle = '#0b1016'; c.fillRect(0, 0, MON_W, MON_H);
+  c.fillStyle = '#1c2530'; c.fillRect(0, 0, MON_W, 44);
+  txt(c, 'pi@raspberrypi: ~/abb-shape-picking-oop', 24, 23, { size:19, color:'#cbd5df', mono:true });
+  const lines = term.lines.slice(-22);
+  lines.forEach((l, i) => txt(c, l.t, 28, 80 + i * 32, { size:22, color:{ dim:'#7f93a3', out:'#8fb4ff', in:'#ffbf66', ok:'#7ee2a1', bad:'#ff8f8f' }[l.cls] || '#d5e1ea', mono:true }));
+}
+function drawMonitor() {
+  if (gui.mode === 'off') { mx.fillStyle = '#05080b'; mx.fillRect(0, 0, MON_W, MON_H); }
+  else if (gui.mode === 'terminal') drawMonTerminal(mx);
+  else drawGui(mx);
+  if (gui.tap) { mx.strokeStyle = 'rgba(250,204,21,0.95)'; mx.lineWidth = 8; mx.beginPath(); mx.arc(gui.tap[0], gui.tap[1], 30, 0, 7); mx.stroke(); }
+  monTex.needsUpdate = true;
+}
+
+// =====================================================================
+// FlexPendant screen (TPWrite lines from MainModule)
+// =====================================================================
+const pend = { lines:[], running:false, waitDI:false };
+function drawPendant() {
+  const c = pctx, W = 560, H = 380;
+  c.fillStyle = '#eef1f4'; c.fillRect(0, 0, W, H);
+  c.fillStyle = '#2b3a4a'; c.fillRect(0, 0, W, 46);
+  txt(c, 'T_ROB1 · MainModule', 16, 24, { size:21, weight:600, color:'#fff' });
+  rr(c, W - 140, 9, 126, 28, 14, pend.running ? '#16a34a' : '#64748b'); txt(c, pend.running ? 'Running' : 'Stopped', W - 77, 24, { size:18, weight:600, color:'#fff', align:'center' });
+  const lines = pend.lines.slice(-8);
+  lines.forEach((l, i) => {
+    const last = i === lines.length - 1;
+    if (last) rr(c, 8, 58 + i * 36, W - 16, 32, 5, '#dbe7f3');
+    txt(c, l, 16, 75 + i * 36, { size:18, color:last ? '#0f1720' : '#435160', weight:last ? 600 : 400, mono:true });
+  });
+  if (pend.waitDI) { rr(c, 8, H - 46, W - 16, 38, 6, '#f5c518'); txt(c, 'WaitDI diOkButton, 1', W / 2, H - 27, { size:19, weight:700, color:'#1b1b1b', align:'center', mono:true }); }
+  pendTex.needsUpdate = true;
+}
+function pendWrite(s) { pend.lines.push(s); drawPendant(); }
+
+// =====================================================================
+// Pi terminal (HTML panel, mirrored on the monitor while it shows the terminal)
+// =====================================================================
+const term = { lines:[] };
+const esc = s => s.replace(/[&<>]/g, ch => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' }[ch]));
+function renderTerm() {
+  const el = $('termText');
+  el.innerHTML = term.lines.slice(-60).map(l => `<span class="${l.cls || ''}">${esc(l.t)}</span>`).join('\n');
+  el.scrollTop = el.scrollHeight;
+  if (gui.mode === 'terminal') drawMonitor();
+}
+function termPrint(t, cls = '') { term.lines.push({ t, cls }); if (term.lines.length > 200) term.lines.shift(); renderTerm(); }
+function termInfer() {
+  const line = { t:`AI inference time: ${sys.inferMs} ms (OK)`, cls:'dim', infer:true };
+  const last = term.lines[term.lines.length - 1];
+  if (last && last.infer) term.lines[term.lines.length - 1] = line; else term.lines.push(line);
+  renderTerm();
+}
+function printShapeList() {
+  const objs = getObjects();
+  if (!objs.length) { termPrint('   ArUco NOT found - no positions', 'bad'); return; }
+  termPrint(`ArUco found | scale ${PX_PER_MM.toFixed(2)} px/mm | ${objs.length} shapes:`, 'dim');
+  objs.forEach(o => termPrint(`${o.label} X=${o.X.toFixed(1)} Y=${o.Y.toFixed(1)} turn=${o.turn.toFixed(1)}`, 'dim'));
+}
+
+// =====================================================================
+// HUD
+// =====================================================================
+const hud = { placed:0, cycles:0, sent:0, retries:0 };
+function renderHud() {
+  const rs = { none:'not connected', ready:'ready', busy:'busy', off:'disconnected' }[gui.robot];
+  const rows = [['Robot', rs], ['Shapes placed', hud.placed], ['Cycles (ready → done)', hud.cycles], ['Commands sent', hud.sent],
+                ['AI inference (last)', sys.inferMs ? `${sys.inferMs} ms` : '–']];
+  if (VID === 'errors') rows.push(['Retries', hud.retries]);
+  $('hud').innerHTML = rows.map(([k, v]) => `<span>${k}</span><b>${v}</b>`).join('');
+}
+
+// =====================================================================
+// Clock, tweens and motion
+// =====================================================================
+let simT = 0, speed = 1, paused = false, playing = false;
+let tweens = [];
+const ease = f => f < 0.5 ? 2 * f * f : 1 - Math.pow(-2 * f + 2, 2) / 2;
+const tween = (dur, update, easing = ease) => new Promise(res => tweens.push({ t0:simT, dur:Math.max(dur, 0.0001), update, res, easing }));
+const wait = d => tween(d, () => {});
+async function turnTo(angle, dur = 0.25) {
+  const a0 = worker.rotation.y, d = Math.atan2(Math.sin(angle - a0), Math.cos(angle - a0));
+  await tween(dur, f => worker.rotation.y = a0 + d * f);
+}
+async function walkTo(x, z, face) {
+  const p0 = worker.position.clone(), p1 = V3(x, 0, z), dist = p0.distanceTo(p1);
+  if (dist > 0.02) {
+    await turnTo(Math.atan2(p1.x - p0.x, p1.z - p0.z));
+    worker.userData.walking = true;
+    await tween(dist / 1.25, f => worker.position.lerpVectors(p0, p1, f), f => f);
+    worker.userData.walking = false; worker.userData.legL.rotation.x = worker.userData.legR.rotation.x = 0;
+  }
+  if (face !== undefined) await turnTo(face);
+}
+const goTo = name => walkTo(STAND[name][0], STAND[name][1], STAND[name][2] ?? Math.PI);
+async function arms(left, right, dur = 0.3) {
+  const { armL, armR } = worker.userData, l0 = armL.rotation.x, r0 = armR.rotation.x;
+  await tween(dur, f => { armL.rotation.x = l0 + (left - l0) * f; armR.rotation.x = r0 + (right - r0) * f; });
+}
+async function tapMon(x, y) {
+  await goTo('desk'); await arms(-1.25, 0, 0.25);
+  gui.tap = [x, y]; drawMonitor(); await wait(0.35); gui.tap = null; drawMonitor();
+  await arms(0, 0, 0.2);
+}
+async function pressButton() {
+  await goTo('button'); await arms(0, -1.15, 0.3);
+  buttonPressed = true; yButton.position.y -= 0.006; await wait(0.35); yButton.position.y += 0.006; buttonPressed = false;
+  buttonWaiting = false; pend.waitDI = false; drawPendant();
+  await arms(0, 0, 0.25);
+}
+// robot moves: MoveJ interpolates around the base (curved path), MoveL goes in a straight line
+const polar = P => ({ yaw:Math.atan2(P.x - RB.base.x, P.z - RB.base.z), r:Math.hypot(P.x - RB.base.x, P.z - RB.base.z), y:P.y });
+async function moveJ(P, toolYaw, dur, label) {
+  if (label) tag(label);
+  const s = polar(robot.P), e = polar(P), ty0 = robot.toolYaw, ty1 = toolYaw ?? robot.toolYaw;
+  let dy = e.yaw - s.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+  const lift = Math.max(0, 0.05 - Math.abs(e.y - s.y) * 0.2);
+  await tween(dur, f => {
+    const yaw = s.yaw + dy * f, r = s.r + (e.r - s.r) * f, y = s.y + (e.y - s.y) * f + Math.sin(f * Math.PI) * lift;
+    robot.P.set(RB.base.x + Math.sin(yaw) * r, y, RB.base.z + Math.cos(yaw) * r); robot.toolYaw = ty0 + (ty1 - ty0) * f; applyRobot();
+  });
+  robot.P.copy(P); robot.toolYaw = ty1; applyRobot();
+}
+async function moveL(P, dur, label) {
+  if (label) tag(label);
+  const p0 = robot.P.clone();
+  await tween(dur, f => { robot.P.lerpVectors(p0, P, f); applyRobot(); });
+}
+const up = (P, mm) => P.clone().add(V3(0, mm / 1000, 0));
+async function pickShape(p, k = 1, fail = false) {
+  const pp = V3(p.mesh.position.x, TABLE_Y + 0.0006 + p.h, p.mesh.position.z);
+  await moveJ(up(pp, 100), undefined, 1.5 * k, 'MoveJ · 100 mm above · v200');
+  await moveL(up(pp, 20), 0.7 * k, 'MoveL · down · v200');
+  await moveL(pp, 0.8 * k, 'MoveL · last 20 mm · v50');
+  tag('Set doValve1 · suction on'); vacuum(true); await wait(0.55 * k);
+  if (!fail) {
+    p.pickShapeYaw = p.mesh.rotation.y; p.pickTipYaw = yawG.rotation.y + toolG.rotation.y;
+    tip.attach(p.mesh); p.state = 'held';
+  }
+  if (fail) tag('Suction on · nothing lifted');
+  await moveL(up(pp, 20), 0.6 * k, fail ? 'Suction on · nothing lifted' : 'MoveL · up · v50');
+  await moveL(up(pp, 100), 0.55 * k, 'MoveL · up · v200');
+  await moveJ(P_APPROACH, undefined, 1.4 * k, 'MoveJ · pApproach');
+}
+async function placeShape(p, k = 1, fail = false, turnLabel = '') {
+  const sp = slotPos(p.type).add(V3(0, 0.008, 0));
+  const baseYawSlot = Math.atan2(sp.x - RB.base.x, sp.z - RB.base.z);
+  let toolYawT = robot.toolYaw;
+  if (!fail && p.type !== 'circle') {
+    const delta = THREE.MathUtils.degToRad(shortest(THREE.MathUtils.radToDeg(0 - p.pickShapeYaw), PERIOD[p.type]));
+    toolYawT = p.pickTipYaw + delta - baseYawSlot;
+  }
+  await moveJ(up(sp, 100), toolYawT, 1.8 * k, `MoveJ · above slot · RelTool \\Rz ${turnLabel}`);
+  await moveL(up(sp, 20), 0.7 * k, 'MoveL · down · v200');
+  await moveL(sp, 0.8 * k, 'MoveL · last 20 mm · v50');
+  tag('Reset doValve1 · suction off'); vacuum(false);
+  if (!fail) {
+    scene.attach(p.mesh);
+    const p0 = p.mesh.position.clone(), p1 = slotPos(p.type), y0 = worldYaw(p.mesh);
+    const y1 = y0 + THREE.MathUtils.degToRad(shortest(THREE.MathUtils.radToDeg(-y0), PERIOD[p.type]));
+    await tween(0.25 * k, f => { p.mesh.position.lerpVectors(p0, p1, f); p.mesh.rotation.set(0, y0 + (y1 - y0) * f, 0); });
+    p.state = 'placed';
+  }
+  await wait(0.35 * k);
+  await moveL(up(sp, 20), 0.55 * k, 'MoveL · up · v50');
+  await moveL(up(sp, 100), 0.5 * k, 'MoveL · up · v200');
+  await moveJ(P_APPROACH, 0, 1.6 * k, 'MoveJ · pApproach');
+  tag(null);
+}
+// messages on the Ethernet cable
+let packets = [];
+async function packet(text, dir, dur = 1.1) {
+  const toRobot = dir === 'toRobot';
+  const s = textSprite(text, { size:0.11, bg:toRobot ? 'rgba(36,89,201,0.95)' : 'rgba(184,95,0,0.95)', mono:true });
+  scene.add(s); packets.push(s);
+  await tween(dur, f => { const t = toRobot ? f : 1 - f; const p = ethCurve.getPointAt(t); s.position.set(p.x, p.y + 0.07, p.z); }, f => f);
+  scene.remove(s); s.material.map.dispose(); s.material.dispose(); packets = packets.filter(q => q !== s);
+}
+async function usbPicture() {
+  flash(0.9);
+  const s = textSprite('picture', { size:0.085, bg:'rgba(43,108,176,0.95)' }); scene.add(s); packets.push(s);
+  await tween(0.9, f => { const p = usbCurve.getPointAt(f); s.position.set(p.x, p.y + 0.05, p.z); }, f => f);
+  scene.remove(s); s.material.map.dispose(); s.material.dispose(); packets = packets.filter(q => q !== s);
+}
+function inferTick() {
+  sys.nextInfer = simT + 1.5;
+  sys.inferMs = Math.round(385 + Math.random() * 85);
+  flash(0.28); ledLevel = 1;
+  termInfer(); renderHud();
+  if (gui.mode === 'gui') drawMonitor();
+}
+
+// =====================================================================
+// Pipeline panel
+// =====================================================================
+const PIPE = {
+  raw:['1 · Camera picture', 'Basler acA2440-75uc, 2448 × 2048 px. Thread 1 always takes the newest picture.'],
+  ai:['2 · AI outlines · YOLO26n-seg', 'Segmentation gives the exact outline of every shape (5 classes were trained). The inference time is printed for every picture.'],
+  filter:['3 · Keep group 1 only', 'Hexagon and star are dropped straight after inference. The magnets are about 24 mm, outside the 35–90 mm size filter.'],
+  geom:['4 · Centre and angle', 'Centre = image moments. Square: minAreaRect (repeats every 90°). Triangle: direction of its 3 corners (every 120°). Circle: 0.'],
+  aruco:['5 · ArUco → millimetres', `Scale = marker edge ÷ 101 mm ≈ ${PX_PER_MM.toFixed(2)} px/mm. X = 147.52 + offset down, Y = 213.15 + offset right (work object white).`],
+};
+const pipeCtx = $('pipeCanvas').getContext('2d');
+let pipeStage = null;
+function showPipe(stage) {
+  pipeStage = stage; const el = $('pipe');
+  if (!stage) { el.hidden = true; placePanels(); return; }
+  el.hidden = false; $('pipeTitle').textContent = PIPE[stage][0]; $('pipeNote').textContent = PIPE[stage][1];
+  drawPipe(); placePanels();
+}
+function drawPipe() { if (pipeStage) drawCam(pipeCtx, { x:0, y:0, w:600, h:438 }, pipeStage, { fs:23, lw:3.5 }); }
+
+// 3-D helpers shown during the explanation
+const vizGroup = new THREE.Group(); scene.add(vizGroup);
+function showCalibViz(on) {
+  vizGroup.clear(); if (!on) return;
+  const mc = inWhite(MARKER.X, MARKER.Y, 2);
+  vizGroup.add(new THREE.ArrowHelper(V3(0, 0, 1), mc, 0.12, 0xdc2626, 0.025, 0.015));
+  vizGroup.add(new THREE.ArrowHelper(V3(1, 0, 0), mc, 0.12, 0x16a34a, 0.025, 0.015));
+  const lx = textSprite('+X', { size:0.09, bg:'rgba(220,38,38,0.95)' }); lx.position.copy(mc).add(V3(0, 0.02, 0.15)); vizGroup.add(lx);
+  const ly = textSprite('+Y', { size:0.09, bg:'rgba(22,163,74,0.95)' }); ly.position.copy(mc).add(V3(0.15, 0.02, 0)); vizGroup.add(ly);
+  const lineMat = new THREE.LineDashedMaterial({ color:0xd946ef, dashSize:0.012, gapSize:0.008 });
+  getObjects().forEach(o => {
+    const c = o.piece.mesh.position.clone(); c.y = TABLE_Y + 0.012;
+    const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints([mc, c]), lineMat); l.computeLineDistances(); vizGroup.add(l);
+  });
+}
+function showIgnoredViz(on) {
+  vizGroup.clear(); if (!on) return;
+  pieces.filter(p => !p.target).forEach(p => {
+    const r = new THREE.Mesh(new THREE.TorusGeometry(p.type === 'magnet' ? 0.02 : 0.042, 0.003, 8, 32), new THREE.MeshBasicMaterial({ color:0xef4444 }));
+    r.rotation.x = Math.PI / 2; r.position.copy(p.mesh.position).add(V3(0, 0.012, 0)); vizGroup.add(r);
+  });
+  const t1 = textSprite('hexagon, star: not group 1', { size:0.1, bg:'rgba(160,30,30,0.92)' }); t1.position.copy(inWhite(100, 300, 90)); vizGroup.add(t1);
+  const t2 = textSprite('magnets: 24 mm < 35 mm', { size:0.1, bg:'rgba(160,30,30,0.92)' }); t2.position.copy(inWhite(10, 10, 70)); vizGroup.add(t2);
+}
+
+// =====================================================================
+// Cameras
+// =====================================================================
+let camAnim = null;
+const presets = {
+  overview:() => [V3(-1.05, 3.15, 3.45), V3(0.62, 0.68, 0.42)],
+  robot:() => [V3(-0.75, 1.45, 1.35), V3(-0.02, 0.86, 0.45)],
+  gui:() => [V3(MON.x - 0.12, MON.y + 0.2, MON.z + 1.05), V3(MON.x, MON.y, MON.z)],
+  top:() => [V3(-0.112, 1.74, 0.56), V3(-0.112, TABLE_Y, 0.545)],
+  sheet:() => [V3(0.5, 1.75, 1.45), V3(-0.1, TABLE_Y, 0.55)],
+  pendant:() => [V3(PEND.x - 0.36, PEND.y + 0.3, PEND.z + 0.72), V3(PEND.x - 0.02, PEND.y - 0.01, PEND.z)],
+  jig:() => [V3(-0.12, 1.42, 1.18), V3(0.22, TABLE_Y + 0.02, 0.56)],
+  button:() => [V3(-0.25, 1.35, 1.45), V3(0.40, 0.82, 0.8)],
+};
+function cam(name, dur = 1.4) {
+  const [p, t] = presets[name]();
+  camAnim = { p0:camera.position.clone(), t0:controls.target.clone(), p1:p, t1:t, start:performance.now(), dur:dur * 1000 };
+}
+const autoCam = name => { if ($('autocam').checked) cam(name); };
+
+// =====================================================================
+// Steps, captions and the three scenarios
+// =====================================================================
+const STEPS = {
+  full:['The cell', 'Start the Pi program: bash run.sh', 'Start RAPID: robot connects and says "ready"', 'Thread 1: picture → AI outlines', 'Thread 2: ArUco → X, Y in mm',
+        'Web page: choose a shape, press Send', 'Robot checks the message, waits for the yellow button', 'Pick: MoveJ above, MoveL down, suction on',
+        'Place: wrist turn, into the slot, "done"', 'Next cycles: square and circle', 'Quit: robot goes home'],
+  colour:['System running, robot ready', 'Colour list: only colours on the sheet', 'Choose Red (2)', 'Pick the red triangle', 'Pick the red square', 'Switch to Blue (1), pick the blue circle', 'Done'],
+  errors:['What the AI ignores', 'Marker covered: no positions', 'Marker visible again', 'Missed pick', 'Retry the same shape', 'Done'],
+};
+const caption = $('caption');
+let stepItems = [];
+function buildSteps() { $('stepList').innerHTML = STEPS[VID].map(s => `<li>${esc(s)}</li>`).join(''); stepItems = [...$('stepList').querySelectorAll('li')]; }
+function step(i, html) { stepItems.forEach((li, k) => li.className = k < i ? 'done' : k === i ? 'active' : ''); caption.innerHTML = html; placePanels(); }
+
+// ----- the pieces of one cycle -----
+async function chooseAndSend(p, k = 1) {
+  await goTo('desk');
+  let list = listedObjects(), i = list.findIndex(o => o.piece === p);
+  await tapMon(...centreOfRect(ROW(i))); gui.sel = p.id; drawMonitor(); await wait(0.45 * k);
+  await tapMon(...centreOfRect(SEND));
+  const o = getObjects().find(q => q.piece === p);
+  if (!o) { gui.status = { ok:false, title:'✗ Not sent', text:'ArUco not detected' }; drawMonitor(); return null; }
+  const msg = `${o.X.toFixed(2)},${o.Y.toFixed(2)},${SHAPE_ID[p.type]},${o.turn.toFixed(2)}`;
+  termPrint(`Picking ${o.label} | AI inference time: ${sys.inferMs} ms`);
+  termPrint(`Sent to robot: ${msg}`, 'out');
+  gui.robot = 'busy'; gui.status = { ok:true, title:'Sent – waiting for the robot', text:msg }; hud.sent++; renderHud(); drawMonitor();
+  return { o, msg };
+}
+async function robotReceives(cmd, p, k = 1) {
+  await packet(cmd.msg, 'toRobot', 1.2 * k);
+  pendWrite(`Server says: ${cmd.msg}`);
+  await wait(0.3 * k);
+  pendWrite(`X=${fmt(cmd.o.X)} Y=${fmt(cmd.o.Y)} Shape=${SHAPE_ID[p.type]} Ang=${fmt(cmd.o.turn)}`);
+  pendWrite('Press yellow button to pick...'); pend.waitDI = true; buttonWaiting = true; drawPendant();
+}
+async function finishCycle(p, k = 1, fail = false) {
+  pendWrite('Placed. Waiting for the next shape...');
+  await packet('done', 'toPi', 0.9 * k);
+  termPrint('Robot says: done', 'in'); hud.cycles++; if (!fail) hud.placed++;
+  gui.status = { ok:true, title:'✓ Robot: done', text:'Shape placed. Choose the next one.' }; gui.sel = null;
+  renderHud(); drawMonitor();
+  await packet('ready', 'toPi', 0.8 * k);
+  termPrint('Robot says: ready', 'in'); gui.robot = 'ready'; renderHud(); drawMonitor();
+}
+async function cycle(p, k = 1, { fail = false } = {}) {
+  const cmd = await chooseAndSend(p, k); if (!cmd) return;
+  autoCam('overview');
+  await Promise.all([robotReceives(cmd, p, k), goTo('button')]);
+  await pressButton();
+  autoCam('robot');
+  pendWrite('Picking...');
+  await pickShape(p, k, fail);
+  pendWrite(`Placing with rotation ${fmt(cmd.o.turn + ROT_FIX[p.type])} deg...`);
+  autoCam('jig');
+  await placeShape(p, k, fail, `${fmt(cmd.o.turn + ROT_FIX[p.type])}°`);
+  await finishCycle(p, k, fail);
+}
+async function capturePictures(n = 1) { for (let i = 0; i < n; i++) { await usbPicture(); inferTick(); } }
+
+// ----- Full cycle -----
+async function runFull() {
+  step(0, 'The cell: a <b>Basler camera</b> above an A3 sheet, a <b>Raspberry Pi 4</b>, the <b>ABB robot</b> with a suction cup and the <b>jig</b> with five slots. Group 1 picks circles, squares and triangles; hexagons, stars and magnets stay.');
+  autoCam('overview'); await wait(4.5);
+
+  step(1, 'Start the Python program first: <code>bash run.sh</code>. It opens the camera, loads the YOLO model, starts the robot server on port 5000 and the web page on port 5001.');
+  autoCam('gui'); await goTo('desk'); await arms(-1.05, -1.05, 0.3);
+  gui.mode = 'terminal'; drawMonitor();
+  term.lines.pop(); termPrint('pi@raspberrypi:~/abb-shape-picking-oop $ bash run.sh', 'ok'); await wait(0.9);
+  for (const l of ['Camera: acA2440-75uc', 'Loading YOLO model...', 'YOLO ready.', 'Robot server listening on port 5000', 'Web page:  http://localhost:5001   (PC: http://<Pi IP>:5001)', 'Waiting for robot to connect...']) { termPrint(l); await wait(0.55); }
+  await arms(0, 0, 0.3);
+  sys.running = true; sys.nextInfer = simT + 0.6; await wait(0.4);
+  gui.mode = 'gui'; gui.robot = 'none'; drawMonitor(); await wait(1.4);
+
+  step(2, 'Then start the RAPID program. The robot moves to <b>pHome</b> and <b>pApproach</b>, connects to the Pi (<code>SocketConnect</code> to 192.168.125.201, port 5000) and sends <b>ready</b>.');
+  autoCam('pendant'); await goTo('pendant'); await arms(0, -1.1, 0.3); pend.running = true; pendWrite('=== Pick and Place (Vision) ==='); await arms(0, 0, 0.3);
+  autoCam('robot');
+  await moveJ(P_HOME, 0, 1.6, 'MoveJ · pHome'); await moveJ(P_APPROACH, 0, 1.6, 'MoveJ · pApproach'); tag(null);
+  autoCam('overview');
+  await packet('connect', 'toPi', 1.1); termPrint('Robot connected.', 'ok'); pendWrite('Connected to server.');
+  await packet('ready', 'toPi', 1.0); termPrint('Robot says: ready', 'in'); gui.robot = 'ready'; renderHud(); drawMonitor(); await wait(0.8);
+
+  step(3, 'Thread 1 grabs the newest picture and runs the trained <b>YOLO26n-seg</b> model (NCNN). It returns the outline of every shape and prints the inference time. Hexagon, star and the magnets are removed.');
+  autoCam('top'); showPipe('raw'); await capturePictures(1); await wait(1.4);
+  showPipe('ai'); await wait(3.2);
+  showPipe('filter'); showIgnoredViz(true); await wait(3.6); showIgnoredViz(false);
+
+  step(4, 'Thread 2 finds the <b>ArUco marker</b>: its 4 corners give the scale (edge ÷ 101 mm) and the angle. Each centre is measured from the marker and becomes <b>X, Y in mm</b> in work object <b>white</b>. The angle gives the wrist turn.');
+  showPipe('geom'); await wait(3.2);
+  showPipe('aruco'); showCalibViz(true); printShapeList(); await wait(4.2);
+  showCalibViz(false); showPipe(null);
+
+  const tri = pieceById('T1');
+  step(5, 'On the web page the operator chooses a colour (here: any) and a shape, then presses <b>Send</b>. The Pi checks the marker is visible and the shape is still there, then sends <code>x,y,shapeID,rotation</code>.');
+  autoCam('gui');
+  const cmd = await chooseAndSend(tri, 1);
+  autoCam('overview');
+  step(6, 'The message goes over the Ethernet cable. RAPID splits it at the commas, checks the shape ID (1–5) and that the point is on the sheet (the fence), then waits for the <b>yellow button</b>.');
+  await Promise.all([robotReceives(cmd, tri, 1), goTo('button')]);
+  autoCam('button'); await wait(1.0); await pressButton();
+  step(7, 'Pick: <b>MoveJ</b> to 100 mm above the shape, <b>MoveL</b> straight down (slow for the last 20 mm), suction on (<code>doValve1</code>), straight up, back to pApproach.');
+  autoCam('robot'); pendWrite('Picking...');
+  await pickShape(tri, 1.1);
+  const lab = `${fmt(cmd.o.turn + ROT_FIX.triangle)}°`;
+  step(8, `Place: <code>RelTool \\Rz</code> turns the wrist (${lab}) so the triangle fits, MoveL straight down into its slot in work object <b>empty</b>, suction off. The robot answers <b>done</b>, then <b>ready</b>.`);
+  pendWrite(`Placing with rotation ${fmt(cmd.o.turn + ROT_FIX.triangle)} deg...`);
+  autoCam('jig'); await placeShape(tri, 1.1, false, lab);
+  await finishCycle(tri, 1);
+
+  step(9, 'The same cycle for the <b>green square</b> and the <b>blue circle</b> (shortened). The list is rebuilt for every picture, so a picked shape disappears and the numbers move up.');
+  autoCam('gui');
+  await cycle(pieceById('S1'), 0.6);
+  autoCam('gui');
+  await cycle(pieceById('C1'), 0.6);
+
+  step(10, '<b>Quit</b> sends <code>quit</code>. The robot moves to pHome and closes the socket; the Pi waits for a new connection.');
+  autoCam('gui'); await tapMon(...centreOfRect(QUIT));
+  termPrint('Sent to robot: quit', 'out'); autoCam('overview');
+  await packet('quit', 'toRobot', 1.1);
+  pendWrite('Server says: quit'); pendWrite('Quitting.');
+  autoCam('robot'); await moveJ(P_HOME, 0, 1.8, 'MoveJ · pHome'); tag(null);
+  pend.running = false; drawPendant();
+  termPrint('Robot disconnected.', 'bad'); termPrint('Waiting for robot to connect...');
+  gui.robot = 'off'; gui.status = { ok:true, title:'Robot stopped', text:`${hud.placed} shapes placed` }; renderHud(); drawMonitor();
+  autoCam('overview');
+}
+
+// ----- Colour selection -----
+async function runColour() {
+  step(0, 'The system is running: the Pi prints the inference time for every picture, and the robot waits at pApproach after sending <b>ready</b>.');
+  autoCam('overview'); await wait(2.6);
+  autoCam('gui'); await goTo('desk');
+  step(1, 'The colour list only offers colours that are on the sheet, with how many: <b>Any colour (6)</b>, Red (2), Green (1), Blue (1), Black (1), White (1). Hexagon and star are not counted.');
+  await tapMon(...centreOfRect(DROP)); gui.open = true; drawMonitor(); await wait(3.4);
+  step(2, 'Choose <b>Red (2)</b>: the list now shows only the red triangle and the red square. The Pi also checks the colour again before it sends anything.');
+  const redIdx = 1 + colourCounts(getObjects()).findIndex(([cn]) => cn === 'red');
+  await tapMon(...centreOfRect(OPT(redIdx))); gui.open = false; gui.colour = 'red'; drawMonitor(); await wait(2.8);
+  step(3, 'Pick the <b>red triangle</b>: Send, the robot checks the message, the operator presses the yellow button, pick and place.');
+  await cycle(pieceById('T1'), 0.75);
+  step(4, 'Next cycle, still filtered on red: the <b>red square</b>. Red now shows (1).');
+  autoCam('gui'); await cycle(pieceById('S2'), 0.6);
+  step(5, 'Switch the filter to <b>Blue (1)</b> and pick the <b>blue circle</b>. A circle needs no wrist turn.');
+  autoCam('gui'); await tapMon(...centreOfRect(DROP)); gui.open = true; drawMonitor(); await wait(1.4);
+  const blueIdx = 1 + colourCounts(getObjects()).findIndex(([cn]) => cn === 'blue');
+  await tapMon(...centreOfRect(OPT(blueIdx))); gui.open = false; gui.colour = 'blue'; drawMonitor(); await wait(1.2);
+  await cycle(pieceById('C1'), 0.6);
+  step(6, 'Three shapes placed in three cycles, each chosen by colour on the web page.');
+  autoCam('overview'); await wait(1.5);
+}
+
+// ----- Filters and retry -----
+async function runErrors() {
+  step(0, 'The model was trained on all five shapes so it can tell them apart. The program then drops <b>hexagon</b> and <b>star</b>, and the size filter (35–90 mm) removes the 24 mm <b>magnets</b>.');
+  autoCam('top'); showPipe('ai'); await wait(3.0);
+  showPipe('filter'); showIgnoredViz(true); await wait(4.5); showIgnoredViz(false); showPipe(null);
+
+  step(1, 'The operator covers the marker with a notebook. Without the marker there is no scale and no reference point, so the Pi has <b>no positions</b> and refuses to send: <b>ArUco not detected</b>.');
+  gui.sel = 'T2'; drawMonitor();
+  autoCam('sheet'); await goTo('marker'); await arms(-1.25, -1.25, 0.35);
+  notebook.visible = true; worker.userData.carry.add(notebook); notebook.position.set(0, 0, 0); notebook.rotation.set(0, 0, 0);
+  const mc = inWhite(MARKER.X, MARKER.Y, 6);
+  scene.attach(notebook);
+  const n0 = notebook.position.clone();
+  await tween(0.7, f => { notebook.position.lerpVectors(n0, mc, f); notebook.position.y += Math.sin(f * Math.PI) * 0.06; });
+  sys.markerCovered = true; await arms(0, 0, 0.3);
+  inferTick(); termPrint('   ArUco NOT found - no positions', 'bad'); drawMonitor();
+  autoCam('gui'); await goTo('desk'); await wait(0.8);
+  await tapMon(...centreOfRect(SEND));
+  gui.status = { ok:false, title:'✗ Not sent', text:'ArUco not detected' }; drawMonitor(); await wait(2.6);
+
+  step(2, 'The notebook is removed. With the next picture the marker is found again and the positions come back.');
+  autoCam('sheet'); await goTo('marker'); await arms(-1.25, -1.25, 0.35);
+  const n1 = notebook.position.clone(), away = V3(-0.11, TABLE_Y + 0.002, 0.9);
+  sys.markerCovered = false;
+  await tween(0.7, f => { notebook.position.lerpVectors(n1, away, f); notebook.position.y += Math.sin(f * Math.PI) * 0.06; });
+  await arms(0, 0, 0.3); inferTick(); printShapeList();
+  gui.sel = null; gui.status = null; drawMonitor();
+  autoCam('gui'); await goTo('desk'); await wait(1.6);
+
+  const t2 = pieceById('T2');
+  step(3, 'Pick the <b>black triangle</b>. This time the suction cup does not hold it, so the shape stays on the sheet. RAPID has no vacuum sensor, so the robot still answers <b>done</b>.');
+  await cycle(t2, 0.8, { fail:true });
+  autoCam('gui'); await wait(1.0);
+  gui.status = { ok:false, title:'Shape is still on the sheet', text:'Retry: choose it again (up to 2 retries)' }; drawMonitor();
+  await wait(2.2);
+  step(4, 'The camera still sees the black triangle, so it is still in the list. The operator simply chooses it again: <b>retry 1 of 2</b>. This time it is placed.');
+  hud.retries++; renderHud();
+  await cycle(t2, 0.75);
+  step(5, 'The marker check stops the robot from getting a guess, and a missed pick is fixed by choosing the shape again.');
+  autoCam('overview'); await wait(1.5);
+}
+
+// =====================================================================
+// Reset, scenario runner, UI wiring
+// =====================================================================
+let generation = 0;
+function resetWorld() {
+  generation++;
+  tweens = []; playing = false; paused = false;
+  packets.forEach(s => scene.remove(s)); packets = [];
+  showPipe(null); vizGroup.clear(); tag(null); vacuum(false);
+  resetPieces();
+  scene.attach(notebook); notebook.visible = false; sys.markerCovered = false;
+  Object.assign(hud, { placed:0, cycles:0, sent:0, retries:0 });
+  buttonWaiting = buttonPressed = false; yButton.position.y = TABLE_Y + 0.081;
+  worker.position.set(STAND.start[0], 0, STAND.start[1]); worker.rotation.y = Math.PI;
+  worker.userData.armL.rotation.x = worker.userData.armR.rotation.x = 0; worker.userData.walking = false;
+  term.lines = []; pend.lines = []; pend.waitDI = false;
+  Object.assign(gui, { colour:'any', open:false, sel:null, status:null, tap:null });
+  if (VID === 'full') {
+    robot.P.copy(P_HOME); robot.toolYaw = 0;
+    sys.running = false; sys.inferMs = 0; gui.mode = 'off'; gui.robot = 'none'; pend.running = false;
+    term.lines.push({ t:'pi@raspberrypi:~/abb-shape-picking-oop $', cls:'ok' });
+  } else {
+    robot.P.copy(P_APPROACH); robot.toolYaw = 0;
+    sys.running = true; sys.inferMs = 412; sys.nextInfer = simT + 0.5; gui.mode = 'gui'; gui.robot = 'ready'; pend.running = true;
+    ['pi@raspberrypi:~/abb-shape-picking-oop $ bash run.sh', 'Camera: acA2440-75uc', 'Loading YOLO model...', 'YOLO ready.', 'Robot server listening on port 5000',
+     'Web page:  http://localhost:5001   (PC: http://<Pi IP>:5001)', 'Waiting for robot to connect...', 'Robot connected.', 'Robot says: ready']
+      .forEach((t, i) => term.lines.push({ t, cls:i === 0 || i === 7 ? 'ok' : i === 8 ? 'in' : '' }));
+    pend.lines.push('=== Pick and Place (Vision) ===', 'Connected to server.');
+  }
+  applyRobot(); renderTerm(); drawPendant(); drawMonitor(); renderHud();
+  $('vdesc').textContent = VARIANTS[VID].desc;
+  [...$('tabs').children].forEach(b => b.classList.toggle('on', b.dataset.v === VID));
+  buildSteps(); caption.innerHTML = 'Press <b>Play</b> to start.';
+  const [p, t] = presets.overview(); camera.position.copy(p); controls.target.copy(t); camAnim = null;
+  placePanels();
+}
+async function scenario() {
+  const gen = generation; playing = true;
+  await ({ full:runFull, colour:runColour, errors:runErrors }[VID])();
+  if (gen !== generation) return;
+  stepItems.forEach(li => li.className = 'done');
+  caption.innerHTML = 'Done. Try another scenario in the tabs above, or press <b>Restart</b>.';
+  playing = false;
+}
+
+TAB_ORDER.forEach(id => {
+  const b = document.createElement('button'); b.textContent = VARIANTS[id].tab; b.dataset.v = id;
+  b.onclick = () => { if (id === VID) return; VID = id; try { history.replaceState(null, '', '#' + id); } catch (e) { location.hash = id; } resetWorld(); };
+  $('tabs').appendChild(b);
+});
+addEventListener('hashchange', () => { const v = location.hash.slice(1); if (VARIANTS[v] && v !== VID) { VID = v; resetWorld(); } });
+$('play').onclick = () => { if (!playing) { paused = false; scenario(); } else paused = false; };
+$('pause').onclick = () => { paused = !paused; };
+$('restart').onclick = () => resetWorld();
+document.querySelectorAll('[data-speed]').forEach(b => b.onclick = () => {
+  speed = +b.dataset.speed; document.querySelectorAll('[data-speed]').forEach(x => x.classList.toggle('on', x === b));
+});
+document.querySelectorAll('[data-cam]').forEach(b => b.onclick = () => cam(b.dataset.cam));
+$('labels').onchange = e => labels.forEach(l => l.visible = e.target.checked);
+
+// panel layout (stacked columns that never overlap the caption or the controls)
+function placePanels() {
+  const tabsB = $('tabs').getBoundingClientRect().bottom;
+  const top = tabsB + 10;
+  const ctrlTop = $('controls').getBoundingClientRect().top;
+  const cap = $('caption'); cap.style.bottom = (innerHeight - ctrlTop + 10) + 'px';
+  const capTop = cap.getBoundingClientRect().top;
+  const title = $('title'); title.style.top = top + 'px';
+  const narrow = innerWidth <= 760;
+  title.hidden = narrow && !$('pipe').hidden;
+  const term = $('term'); const tb = title.getBoundingClientRect().bottom;
+  term.style.top = (tb + 10) + 'px'; term.style.height = Math.max(120, capTop - tb - 20) + 'px';
+  term.hidden = capTop - tb - 20 < 120;
+  const steps = $('steps'); steps.style.top = top + 'px'; steps.style.visibility = '';
+  const pipe = $('pipe');
+  const stepsVisible = getComputedStyle(steps).display !== 'none';
+  pipe.style.top = (stepsVisible ? steps.getBoundingClientRect().bottom + 10 : top) + 'px';
+  if (!pipe.hidden && stepsVisible && pipe.getBoundingClientRect().bottom > capTop - 8) {   // short screen: the pipeline takes the steps' place
+    steps.style.visibility = 'hidden'; pipe.style.top = top + 'px';
+  }
+}
+function resize() {
+  const w = innerWidth, h = innerHeight;
+  renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); placePanels();
+}
+addEventListener('resize', resize);
+resize();
+resetWorld();
+window.__sim = { get simT() { return simT; }, setSpeed:s => speed = s, play:() => $('play').click(), get caption() { return caption.textContent; } };
+
+// =====================================================================
+// Render loop
+// =====================================================================
+const clock = new THREE.Clock();
+renderer.setAnimationLoop(() => {
+  const dt = Math.min(clock.getDelta(), 0.05);
+  if (!paused) {
+    simT += dt * speed;
+    const now = tweens.slice();
+    for (const tw of now) {
+      const f = Math.min((simT - tw.t0) / tw.dur, 1);
+      tw.update(tw.easing(f));
+      if (f >= 1) { tweens = tweens.filter(x => x !== tw); tw.res(); }
+    }
+    const u = worker.userData;
+    if (u.walking) { u.phase += dt * speed * 9; u.legL.rotation.x = Math.sin(u.phase) * 0.5; u.legR.rotation.x = -Math.sin(u.phase) * 0.5; }
+    if (sys.running && simT >= sys.nextInfer) inferTick();
+    flashLevel = Math.max(0, flashLevel - dt * speed * 1.6);
+    ledLevel = Math.max(0, ledLevel - dt * speed * 3);
+  }
+  coneMat.opacity = 0.12 + flashLevel * 0.7; flashMat.opacity = flashLevel * 0.35;
+  piLedMat.color.setHex(sys.running ? (ledLevel > 0.3 ? 0x4ade80 : 0x15803d) : 0x1f3d2a);
+  yellowMat.emissive.setHex(buttonPressed ? 0xffd34d : buttonWaiting && Math.sin(simT * 7) > 0 ? 0x8a6a00 : 0x000000);
+  if (toolTag.visible) { const p = worldOf(tip); toolTag.position.set(p.x, p.y + 0.14, p.z); }
+  if (camAnim) {
+    const f = Math.min((performance.now() - camAnim.start) / camAnim.dur, 1), e = ease(f);
+    camera.position.lerpVectors(camAnim.p0, camAnim.p1, e); controls.target.lerpVectors(camAnim.t0, camAnim.t1, e);
+    if (f >= 1) camAnim = null;
+  }
+  controls.update();
+  renderer.render(scene, camera);
+});
+</script>
+
+</body></html>
