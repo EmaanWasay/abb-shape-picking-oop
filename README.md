@@ -99,7 +99,7 @@ The robot answers `done` after placing, or `error` if it refuses the command
 1. Re-teach `tsuc`, `white`, `empty` and the robot targets if the bench is different. (However the tsuc the suction cup tool is already calibrated / saved on mainmodule code)
 2. Jog the cup to the middle of the marker (Work object = white) and put X/Y in
    `marker_x_mm` / `marker_y_mm` in `picker/config.py`.
-3. Check the Pi's 192.168.125.x (.207 for my case) address (`hostname -I`) matches `SocketConnect` in RAPID.
+3. Check the Pi's 192.168.125.x (.210 for my case) address (`hostname -I`) matches `SocketConnect` in RAPID.
 4. Make the Pack-and-Go of the robot station before leaving.
 
 ## Tests
