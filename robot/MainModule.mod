@@ -9,9 +9,9 @@ MODULE MainModule
     ! ----- Tool and the two work objects -----
     TASK PERS tooldata tsuc:=[TRUE,[[-90.0441,1.4018,177.644],[1,0,0,0]],[0.5,[50,0,50],[1,0,0,0],0,0,0]];
     ! white = the A3 sheet: origin on a corner, X along the 297 mm edge, Y along the 420 mm edge
-    TASK PERS wobjdata white:=[FALSE,TRUE,"",[[446.109,-300.614,-2.32287],[0.999983,0.00142333,0.00155486,0.00552666]],[[0,0,0],[1,0,0,0]]];
+    TASK PERS wobjdata white:=[FALSE,TRUE,"",[[390.39,-322.358,-10.5639],[0.999994,0.000229252,-0.00351361,-0.000724835]],[[0,0,0],[1,0,0,0]]];
     ! empty = the placing jig
-    TASK PERS wobjdata empty:=[FALSE,TRUE,"",[[531.086,163.485,5.75979],[0.999955,-0.00810186,-0.00485621,-3.74937E-05]],[[0,0,0],[1,0,0,0]]];
+    TASK PERS wobjdata empty:=[FALSE,TRUE,"",[[470.461,137.68,1.56183],[0.999998,-0.000798696,-0.00158891,-0.000666858]],[[0,0,0],[1,0,0,0]]];
 
     ! ----- Taught positions: home + approach + 5 slots = 7 -----
     ! pHome and pApproach are taught in white. The 5 slots are taught in empty.
@@ -19,7 +19,7 @@ MODULE MainModule
     ! pApproach = the waiting position beside the sheet. The robot starts here,
     ! passes through here between the sheet and the jig, and returns here after
     ! every place. It also gives its orientation to every computed pick point.
-    CONST robtarget pApproach:=[[-84.00,104.10,213.03],[0.00113286,-0.0675324,-0.997712,0.00300615],[0,-1,0,0],[9E+09,9E+09,9E+09,9E+09,9E+09,9E+09]];
+    CONST robtarget pApproach:=[[-1.07,90.41,211.32],[0.0063404,-0.061256,-0.9981,0.00204561],[-1,-1,-1,0],[9E+09,9E+09,9E+09,9E+09,9E+09,9E+09]];
     CONST robtarget ptriangle:=[[34.19,50.21,0.68],[0.000283379,-0.137896,-0.990442,0.00310788],[0,-1,0,0],[9E+09,9E+09,9E+09,9E+09,9E+09,9E+09]];
     CONST robtarget pcircle:=[[149.94,170.74,2.16],[0.000287709,-0.137903,-0.990441,0.00311737],[0,-1,0,0],[9E+09,9E+09,9E+09,9E+09,9E+09,9E+09]];
     CONST robtarget psquare:=[[145.20,40.81,0.61],[0.000287143,-0.137885,-0.990443,0.0031159],[0,-1,0,0],[9E+09,9E+09,9E+09,9E+09,9E+09,9E+09]];
@@ -48,15 +48,20 @@ MODULE MainModule
     CONST speeddata vApproach:=v50;
 
     ! ----- Placing corrections (in empty) -----
-    ! Shift for ALL place positions, in mm. -Y = left as seen from the operator side.
-    ! If it moves the wrong way, change -7 to 7 (or move the value to X).
+    ! Shift for ALL place positions, in mm (in empty).
+    ! +Y = towards the hexagon/circle side of the jig, -Y = towards the triangle/square side.
+    ! +X = towards the square/circle row, -X = towards the triangle/hexagon row.
+    ! -7 placed the shapes about 14 mm too far to the triangle/square side, so it is now +7.
     CONST num PLACE_SHIFT_X:=0;
-    CONST num PLACE_SHIFT_Y:=-7;
+    CONST num PLACE_SHIFT_Y:=7;
     ! Extra wrist turn at the slot, in degrees, added to the camera's angle.
     ! Negative = anticlockwise seen from above (the tool Z points down).
-    ! Tune between -2 and -5. If it turns the wrong way, make it positive.
-    CONST num TRIANGLE_ROT_FIX:=-3.5;
-    CONST num SQUARE_ROT_FIX:=-3.5;
+    ! The triangle, circle and square slots were taught with the wrist turned
+    ! 8.7 deg clockwise compared with the pick (pApproach), so the shapes landed
+    ! turned clockwise. 8.7 + the 3.5 found before = about 12.
+    ! Still clockwise -> make it more negative. Turned too far -> less negative.
+    CONST num TRIANGLE_ROT_FIX:=-12;
+    CONST num SQUARE_ROT_FIX:=-12;
 
     ! =================================================================
     ! VARIABLES
